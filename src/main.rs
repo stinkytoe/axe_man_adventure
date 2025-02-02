@@ -912,4 +912,3 @@ fn game_over_keyboard_input(
         next_state.set(GameState::Title);
     }
 }
-
