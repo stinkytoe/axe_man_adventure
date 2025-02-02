@@ -234,13 +234,14 @@ fn main() {
     );
 
     app.add_systems(OnEnter(GameState::Title), start_title);
+    app.add_systems(OnExit(GameState::Title), cleanup_title);
     app.add_systems(
         Update,
         title_keyboard_commands.run_if(in_state(GameState::Title)),
     );
-    app.add_systems(OnExit(GameState::Title), cleanup_title);
 
     app.add_systems(OnEnter(GameState::Playing), start_playing);
+    app.add_systems(OnExit(GameState::Playing), cleanup_playing);
     app.add_systems(
         Update,
         (
@@ -252,6 +253,8 @@ fn main() {
             .run_if(in_state(GameState::Playing)),
     );
 
+    app.add_systems(OnEnter(GameState::GameOver), start_gameover);
+    app.add_systems(OnExit(GameState::GameOver), cleanup_gameover);
     app.add_systems(
         Update,
         game_over_keyboard_input.run_if(in_state(GameState::GameOver)),
@@ -302,6 +305,12 @@ fn start_title(mut commands: Commands, asset_server: Res<AssetServer>) {
     ));
 }
 
+fn cleanup_title(mut shieldtank_commands: ShieldtankCommands, shieldtank_query: ShieldtankQuery) {
+    shieldtank_query.iter_worlds().for_each(|world| {
+        shieldtank_commands.world(&world).despawn_recursive();
+    });
+}
+
 fn title_keyboard_commands(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut next_state: ResMut<NextState<GameState>>,
@@ -309,12 +318,6 @@ fn title_keyboard_commands(
     if keyboard_input.any_just_pressed([KeyCode::KeyF, KeyCode::Space].into_iter()) {
         next_state.set(GameState::Playing);
     }
-}
-
-fn cleanup_title(mut shieldtank_commands: ShieldtankCommands, shieldtank_query: ShieldtankQuery) {
-    shieldtank_query.iter_worlds().for_each(|world| {
-        shieldtank_commands.world(&world).despawn_recursive();
-    });
 }
 
 //
@@ -736,6 +739,8 @@ fn start_playing(
     message_board.0 = "The Axe Man begins his adventure!".to_string();
 }
 
+fn cleanup_playing() {}
+
 fn flip_sprites(
     direction_changed_query: Query<(Entity, &Direction), Changed<Direction>>,
     mut shieldtank_commands: ShieldtankCommands,
@@ -881,24 +886,29 @@ fn player_move(
 // Game Over Systems
 //
 
-fn game_over_keyboard_input(
+fn start_gameover() {}
+
+fn cleanup_gameover(
     mut commands: Commands,
-    keyboard_input: Res<ButtonInput<KeyCode>>,
-    mut next_state: ResMut<NextState<GameState>>,
     mut shieldtank_commands: ShieldtankCommands,
     shieldtank_query: ShieldtankQuery,
     message_board_query: Query<Entity, With<MessageBoard>>,
 ) {
+    shieldtank_query.iter_worlds().for_each(|world| {
+        shieldtank_commands.world(&world).despawn_recursive();
+    });
+
+    let message_board = message_board_query.single();
+    commands.entity(message_board).despawn_recursive();
+}
+
+fn game_over_keyboard_input(
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
     if keyboard_input.any_just_pressed([KeyCode::KeyF].into_iter()) {
         info!("A key pressed during game over...");
 
-        shieldtank_query.iter_worlds().for_each(|world| {
-            shieldtank_commands.world(&world).despawn_recursive();
-        });
-
         next_state.set(GameState::Title);
-
-        let message_board = message_board_query.single();
-        commands.entity(message_board).despawn_recursive();
     }
 }
