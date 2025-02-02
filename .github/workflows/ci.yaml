@@ -102,4 +102,4 @@ jobs:
   #         sweep-cache: true
   #
   #     - name: Check documentation
-        run: cargo doc --locked --workspace --all-features --document-private-items --no-deps
+  #      run: cargo doc --locked --workspace --all-features --document-private-items --no-deps
