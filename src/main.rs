@@ -287,9 +287,12 @@ fn startup(mut commands: Commands) {
 //
 
 fn start_title(mut commands: Commands, asset_server: Res<AssetServer>) {
-    commands.spawn(WorldComponent {
-        handle: asset_server.load(PROJECT_FILE.to_string() + "#worlds:Title"),
-        config: asset_server.add(ProjectConfig::default()),
+    commands.spawn(ProjectComponent {
+        handle: asset_server.load(PROJECT_FILE),
+        config: asset_server.add(ProjectConfig {
+            load_pattern: LoadPattern::Pattern("worlds:Title*".to_string()),
+            ..Default::default()
+        }),
     });
 
     commands.spawn((
@@ -314,8 +317,8 @@ fn start_title(mut commands: Commands, asset_server: Res<AssetServer>) {
 }
 
 fn cleanup_title(mut shieldtank_commands: ShieldtankCommands, shieldtank_query: ShieldtankQuery) {
-    shieldtank_query.iter_worlds().for_each(|world| {
-        shieldtank_commands.world(&world).despawn_recursive();
+    shieldtank_query.iter_projects().for_each(|project| {
+        shieldtank_commands.project(&project).despawn_recursive();
     });
 }
 
@@ -738,9 +741,12 @@ fn start_playing(
     asset_server: Res<AssetServer>,
     mut message_board_query: Query<&mut Text, With<MessageBoard>>,
 ) {
-    commands.spawn(WorldComponent {
-        handle: asset_server.load(PROJECT_FILE.to_string() + "#worlds:World"),
-        config: asset_server.add(ProjectConfig::default()),
+    commands.spawn(ProjectComponent {
+        handle: asset_server.load(PROJECT_FILE.to_string()),
+        config: asset_server.add(ProjectConfig {
+            load_pattern: LoadPattern::Pattern("worlds:World*".to_string()),
+            ..Default::default()
+        }),
     });
 
     let mut message_board = message_board_query.single_mut();
@@ -902,8 +908,8 @@ fn cleanup_gameover(
     shieldtank_query: ShieldtankQuery,
     message_board_query: Query<Entity, With<MessageBoard>>,
 ) {
-    shieldtank_query.iter_worlds().for_each(|world| {
-        shieldtank_commands.world(&world).despawn_recursive();
+    shieldtank_query.iter_projects().for_each(|project| {
+        shieldtank_commands.project(&project).despawn_recursive();
     });
 
     let message_board = message_board_query.single();
