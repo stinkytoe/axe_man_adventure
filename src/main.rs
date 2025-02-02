@@ -906,7 +906,7 @@ fn game_over_keyboard_input(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     mut next_state: ResMut<NextState<GameState>>,
 ) {
-    if keyboard_input.any_just_pressed([KeyCode::KeyF].into_iter()) {
+    if keyboard_input.any_just_pressed([KeyCode::KeyF, KeyCode::Space].into_iter()) {
         info!("A key pressed during game over...");
 
         next_state.set(GameState::Title);
