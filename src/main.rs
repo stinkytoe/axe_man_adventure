@@ -421,8 +421,19 @@ fn animate_water(
     }
 }
 
-fn game_over_event(trigger: Trigger<GameOverEvent>, mut next_state: ResMut<NextState<GameState>>) {
-    let _win_or_lose = trigger.event();
+fn game_over_event(
+    trigger: Trigger<GameOverEvent>,
+    mut next_state: ResMut<NextState<GameState>>,
+    mut message_board_query: Query<&mut Text, With<MessageBoard>>,
+) {
+    let msg = match trigger.event() {
+        GameOverEvent::Win => "The Axe Man has slain the Vile Lancer!",
+        GameOverEvent::Lose => "The Axe Man was slain!",
+    };
+
+    let mut message_board = message_board_query.single_mut();
+    message_board.0 = format!("{}\nPress F or Space to return to the main menu...", msg);
+
     next_state.set(GameState::GameOver);
 }
 
@@ -431,15 +442,12 @@ fn player_bump_event(
     mut commands: Commands,
     mut shieldtank_commands: ShieldtankCommands,
     shieldtank_query: ShieldtankQuery,
-    mut message_board_query: Query<&mut Text, With<MessageBoard>>,
 ) {
     let bumped_entity = trigger.event().ecs_entity;
 
     let Some(bumped_entity) = shieldtank_query.get_entity(bumped_entity).ok() else {
         return;
     };
-
-    let mut message_board = message_board_query.single_mut();
 
     let Some(axe_man) = shieldtank_query.entity_by_iid(AXE_MAN_IID) else {
         return;
@@ -458,8 +466,6 @@ fn player_bump_event(
             .entity(&axe_man)
             .insert(LivingState::Dead)
             .insert(AnimationOverride::dying_animation());
-
-        message_board.0 = "The Axe man was slain!".to_string();
 
         commands.trigger(GameOverEvent::Lose);
     }
@@ -609,8 +615,6 @@ fn player_interact_event(
                 .entity(&lancer)
                 .insert(LivingState::Dead)
                 .insert(AnimationOverride::dying_animation());
-
-            message_board.0 = "The Axe Man has slain the Vile Lancer!".to_string();
 
             commands.trigger(GameOverEvent::Win);
         }
