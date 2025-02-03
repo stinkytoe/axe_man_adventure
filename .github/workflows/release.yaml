@@ -136,7 +136,7 @@ jobs:
             echo "SDKROOT=$(xcrun --sdk macosx --show-sdk-path)" >> "${GITHUB_ENV}"
           fi
 
-          echo "RUSTFLAGS='--cfg getrandom_backend="wasm_js"'" >> "${GITHUB_ENV}"
+          echo 'RUSTFLAGS=--cfg getrandom_backend=wasm_js' >> "${GITHUB_ENV}"
 
       - name: Checkout repository
         uses: actions/checkout@v4
