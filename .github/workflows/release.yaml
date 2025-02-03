@@ -164,10 +164,11 @@ jobs:
 
       - name: Install and run trunk (Web)
         if: ${{ matrix.platform == 'web' }}
+        env:
+          RUSTFLAGS: --cfg getrandom_backend="wasm_js"
         run: |
           cargo binstall --no-confirm trunk wasm-bindgen-cli wasm-opt
           trunk build --locked --release --dist '${{ env.app }}'
-          echo 'RUSTFLAGS=--cfg getrandom_backend="wasm_js"' >> "${GITHUB_ENV}"
 
       - name: Build binaries (non-Web)
         if: ${{ matrix.platform != 'web' }}
