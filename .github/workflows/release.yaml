@@ -136,6 +136,8 @@ jobs:
             echo "SDKROOT=$(xcrun --sdk macosx --show-sdk-path)" >> "${GITHUB_ENV}"
           fi
 
+          echo "RUSTFLAGS='--cfg getrandom_backend="wasm_js"'" >> "${GITHUB_ENV}"
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -295,7 +297,6 @@ jobs:
       - name: Upload all packages to itch.io
         env:
           BUTLER_API_KEY: ${{ secrets.BUTLER_CREDENTIALS }}
-          RUSTFLAGS: '--cfg getrandom_backend="wasm_js"'
         run: |
           for channel in $(ls tmp); do
             ./butler push \
