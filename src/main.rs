@@ -4,6 +4,7 @@ use bevy::color::palettes::tailwind::GRAY_500;
 use bevy::prelude::*;
 use bevy::window::WindowMode;
 
+use rand::seq::IndexedRandom;
 use shieldtank::prelude::*;
 
 const WINDOW_RESOLUTION: Vec2 = Vec2::new(1280.0, 960.0);
@@ -213,11 +214,12 @@ fn main() {
     {
         use bevy_inspector_egui::quick::WorldInspectorPlugin;
         app.add_plugins(WorldInspectorPlugin::default());
-        app.register_type::<AnimationOverride>()
-            .register_type::<Direction>()
-            .register_type::<LivingState>()
-            .register_type::<PlayerMove>();
     }
+
+    app.register_type::<AnimationOverride>()
+        .register_type::<Direction>()
+        .register_type::<LivingState>()
+        .register_type::<PlayerMove>();
 
     app.init_state::<GameState>();
 
@@ -287,12 +289,9 @@ fn startup(mut commands: Commands) {
 //
 
 fn start_title(mut commands: Commands, asset_server: Res<AssetServer>) {
-    commands.spawn(ProjectComponent {
-        handle: asset_server.load(PROJECT_FILE),
-        config: asset_server.add(ProjectConfig {
-            load_pattern: LoadPattern::Pattern("worlds:Title*".to_string()),
-            ..Default::default()
-        }),
+    commands.spawn(WorldComponent {
+        handle: asset_server.load(PROJECT_FILE.to_string() + "#worlds:Title"),
+        config: asset_server.add(ProjectConfig::default()),
     });
 
     commands.spawn((
@@ -317,8 +316,8 @@ fn start_title(mut commands: Commands, asset_server: Res<AssetServer>) {
 }
 
 fn cleanup_title(mut shieldtank_commands: ShieldtankCommands, shieldtank_query: ShieldtankQuery) {
-    shieldtank_query.iter_projects().for_each(|project| {
-        shieldtank_commands.project(&project).despawn_recursive();
+    shieldtank_query.iter_worlds().for_each(|world| {
+        shieldtank_commands.world(&world).despawn_recursive();
     });
 }
 
@@ -617,6 +616,20 @@ fn player_interact_event(
                 .insert(AnimationOverride::dying_animation());
 
             commands.trigger(GameOverEvent::Win);
+        } else {
+            let Some(name) = interacted_entity.get_field_string("Name") else {
+                return;
+            };
+
+            let Some(replies) = interacted_entity.get_field_array_string("Replies") else {
+                return;
+            };
+
+            let Some(random_reply) = replies.choose(&mut rand::rng()) else {
+                return;
+            };
+
+            message_board.0 = format!("{name} says: {random_reply}");
         }
     } else {
         shieldtank_commands
@@ -745,12 +758,17 @@ fn start_playing(
     asset_server: Res<AssetServer>,
     mut message_board_query: Query<&mut Text, With<MessageBoard>>,
 ) {
-    commands.spawn(ProjectComponent {
-        handle: asset_server.load(PROJECT_FILE.to_string()),
-        config: asset_server.add(ProjectConfig {
-            load_pattern: LoadPattern::Pattern("worlds:World*".to_string()),
-            ..Default::default()
-        }),
+    // commands.spawn(ProjectComponent {
+    //     handle: asset_server.load(PROJECT_FILE.to_string()),
+    //     config: asset_server.add(ProjectConfig {
+    //         load_pattern: LoadPattern::Pattern("worlds:World*".to_string()),
+    //         ..Default::default()
+    //     }),
+    // });
+
+    commands.spawn(WorldComponent {
+        handle: asset_server.load(PROJECT_FILE.to_string() + "#worlds:World"),
+        config: asset_server.add(ProjectConfig::default()),
     });
 
     let mut message_board = message_board_query.single_mut();
@@ -905,8 +923,8 @@ fn cleanup_gameover(
     shieldtank_query: ShieldtankQuery,
     message_board_query: Query<Entity, With<MessageBoard>>,
 ) {
-    shieldtank_query.iter_projects().for_each(|project| {
-        shieldtank_commands.project(&project).despawn_recursive();
+    shieldtank_query.iter_worlds().for_each(|world| {
+        shieldtank_commands.world(&world).despawn_recursive();
     });
 
     let message_board = message_board_query.single();
