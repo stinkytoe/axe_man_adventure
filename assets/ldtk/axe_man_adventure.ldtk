@@ -11,7 +11,7 @@
 	"iid": "d5ab0640-8990-11ee-a83b-7da29036a93f",
 	"jsonVersion": "1.5.3",
 	"appBuildId": 473703,
-	"nextUid": 1895,
+	"nextUid": 1897,
 	"identifierStyle": "Capitalize",
 	"toc": [],
 	"worldLayout": null,
@@ -5834,7 +5834,7 @@
 		{
 			"identifier": "Thief",
 			"uid": 302,
-			"tags": [ "NPC", "animate" ],
+			"tags": ["animate"],
 			"exportToToc": false,
 			"allowOutOfBounds": false,
 			"doc": null,
@@ -5938,13 +5938,50 @@
 					"allowedRefsEntityUid": null,
 					"allowedRefTags": [],
 					"tilesetUid": null
+				},
+				{
+					"identifier": "Replies",
+					"doc": null,
+					"__type": "Array<String>",
+					"uid": 1896,
+					"type": "F_Text",
+					"isArray": true,
+					"canBeNull": true,
+					"arrayMinLength": null,
+					"arrayMaxLength": null,
+					"editorDisplayMode": "Hidden",
+					"editorDisplayScale": 1,
+					"editorDisplayPos": "Above",
+					"editorLinkStyle": "StraightArrow",
+					"editorDisplayColor": null,
+					"editorAlwaysShow": false,
+					"editorShowInWorld": true,
+					"editorCutLongValues": true,
+					"editorTextSuffix": null,
+					"editorTextPrefix": null,
+					"useForSmartColor": false,
+					"exportToToc": false,
+					"searchable": false,
+					"min": null,
+					"max": null,
+					"regex": null,
+					"acceptFileTypes": null,
+					"defaultOverride": null,
+					"textLanguageMode": null,
+					"symmetricalRef": false,
+					"autoChainRef": true,
+					"allowOutOfLevelRef": true,
+					"allowedRefs": "OnlySame",
+					"allowedRefsEntityUid": null,
+					"allowedRefTags": [],
+					"tilesetUid": null
 				}
 			]
 		},
 		{
 			"identifier": "Lancer",
 			"uid": 330,
-			"tags": [ "Enemy", "animate" ],
+			"tags": ["animate"],
 			"exportToToc": false,
 			"allowOutOfBounds": false,
 			"doc": null,
@@ -6638,7 +6675,7 @@
 								"__identifier": "Thief",
 								"__grid": [9,10],
 								"__pivot": [0.5,0.5],
-								"__tags": [ "NPC", "animate" ],
+								"__tags": ["animate"],
 								"__tile": { "tilesetUid": 303, "x": 0, "y": 0, "w": 32, "h": 32 },
 								"__smartColor": "#D77643",
 								"iid": "47205270-25d0-11ef-bafe-05b804b5f562",
@@ -6668,7 +6705,14 @@
 									{ "__identifier": "Name", "__type": "String", "__value": "Thom", "__tile": null, "defUid": 1877, "realEditorValues": [{
 										"id": "V_String",
 										"params": ["Thom"]
-									}] }
+									}] },
+									{ "__identifier": "Replies", "__type": "Array<String>", "__value": [ "Hi!", "What?" ], "__tile": null, "defUid": 1896, "realEditorValues": [ {
+										"id": "V_String",
+										"params": ["Hi!"]
+									}, {
+										"id": "V_String",
+										"params": ["What?"]
+									} ] }
 								],
 								"__worldX": -104,
 								"__worldY": 168
@@ -6677,7 +6721,7 @@
 								"__identifier": "Thief",
 								"__grid": [5,11],
 								"__pivot": [0.5,0.5],
-								"__tags": [ "NPC", "animate" ],
+								"__tags": ["animate"],
 								"__tile": { "tilesetUid": 303, "x": 0, "y": 32, "w": 32, "h": 32 },
 								"__smartColor": "#D77643",
 								"iid": "cf8f0880-25d0-11ef-b73d-a7ec9155ad0a",
@@ -6707,7 +6751,14 @@
 									{ "__identifier": "Name", "__type": "String", "__value": "Norbert", "__tile": null, "defUid": 1877, "realEditorValues": [{
 										"id": "V_String",
 										"params": ["Norbert"]
-									}] }
+									}] },
+									{ "__identifier": "Replies", "__type": "Array<String>", "__value": [ "blah", "argh" ], "__tile": null, "defUid": 1896, "realEditorValues": [ {
+										"id": "V_String",
+										"params": ["blah"]
+									}, {
+										"id": "V_String",
+										"params": ["argh"]
+									} ] }
 								],
 								"__worldX": -168,
 								"__worldY": 184
@@ -7789,7 +7840,7 @@
 								"__identifier": "Lancer",
 								"__grid": [10,6],
 								"__pivot": [0.5,0.5],
-								"__tags": [ "Enemy", "animate" ],
+								"__tags": ["animate"],
 								"__tile": { "tilesetUid": 331, "x": 0, "y": 0, "w": 32, "h": 32 },
 								"__smartColor": "#EAD4AA",
 								"iid": "85f22ca0-fec0-11ee-8cdd-41f7def1ae8a",
