@@ -5,28 +5,32 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy = { version = "0.15", features = ["dynamic_linking"] }
-bevy-inspector-egui = "0.29"
-rand = "0.9"
-getrandom = { version = "0.3", features = ["wasm_js"] }
-shieldtank = { git = "https://github.com/stinkytoe/shieldtank.git" }
+#bevy = { version = "0.16.0-dev", features = ["dynamic_linking"] }
+bevy = { git = "https://github.com/bevyengine/bevy.git", tag = "v0.16.0-rc.5" }
+# rand = "0.9"
+# getrandom = { version = "0.3", features = ["wasm_js"] }
+
+#bevy-inspector-egui = "0.30"
+
+#shieldtank = { git = "https://github.com/stinkytoe/shieldtank.git" }
+shieldtank = { path = "./shieldtank/" }
 
 [features]
 default = [
-    # Default to a native dev build.
-    "dev_native",
+	# Default to a native dev build.
+	"dev_native",
 ]
 dev = [
-    # Improve compile times for dev builds by linking Bevy as a dynamic library.
-    "bevy/dynamic_linking",
-    "bevy/bevy_dev_tools",
+	# Improve compile times for dev builds by linking Bevy as a dynamic library.
+	"bevy/dynamic_linking",
+	"bevy/bevy_dev_tools",
 ]
 dev_native = [
-    "dev",
-    # Enable asset hot reloading for native dev builds.
-    "bevy/file_watcher",
-    # Enable embedded asset hot reloading for native dev builds.
-    "bevy/embedded_watcher",
+	"dev",
+	# Enable asset hot reloading for native dev builds.
+	#"bevy/file_watcher",
+	# Enable embedded asset hot reloading for native dev builds.
+	#"bevy/embedded_watcher",
 ]
 
 

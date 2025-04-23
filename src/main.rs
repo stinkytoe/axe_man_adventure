@@ -3,28 +3,29 @@ use std::time::Duration;
 use bevy::color::palettes::tailwind::GRAY_500;
 use bevy::prelude::*;
 use bevy::window::WindowMode;
-
-use rand::seq::IndexedRandom;
-use shieldtank::prelude::*;
-
-const WINDOW_RESOLUTION: Vec2 = Vec2::new(1280.0, 960.0);
-
-const PROJECT_FILE: &str = "ldtk/axe_man_adventure.ldtk";
-
-const GLOBAL_FRAME_TIME: f32 = 1.0 / 3.75;
-const ATTACK_FRAME_TIME: f32 = 1.0 / 15.0;
-const DEAD_FRAME_TIME: f32 = 1.0 / 3.75;
-
-const PLAYER_MOVE_SPEED: f32 = 40.0;
+use bevy::DefaultPlugins;
+use shieldtank::bevy_ldtk_asset::iid::{iid, Iid};
+use shieldtank::component::field_instances::FieldInstances;
+use shieldtank::component::iid::LdtkIid;
+use shieldtank::component::tile::Tile;
+use shieldtank::component::world::LdtkWorld;
+use shieldtank::plugin::ShieldtankPlugins;
+use shieldtank::query::component::{LdtkEntityQuery, LdtkLayerQuery};
+use shieldtank::query::grid_value::GridValueQuery;
+use shieldtank::query::in_bounds::LdtkEntityInBoundsQuery;
 
 const AXE_MAN_IID: Iid = iid!("a0170640-9b00-11ef-aa23-11f9c6be2b6e");
 const LANCER_IID: Iid = iid!("85f22ca0-fec0-11ee-8cdd-41f7def1ae8a");
 
-//
-// Game State
-//
+const WINDOW_RESOLUTION: Vec2 = Vec2::new(1280.0, 960.0);
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, States)]
+const GLOBAL_FRAME_TIME: f32 = 1.0 / 3.75;
+const ATTACK_FRAME_TIME: f32 = 1.0 / 15.0;
+const DYING_FRAME_TIME: f32 = 1.0 / 3.75;
+
+const PLAYER_MOVE_SPEED: f32 = 40.0;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, States)]
 enum GameState {
     #[default]
     Title,
@@ -32,14 +33,25 @@ enum GameState {
     GameOver,
 }
 
-//
-// Components
-//
+#[derive(Resource)]
+struct GlobalTimer {
+    timer: Timer,
+    frame: usize,
+}
 
-#[derive(Component, Reflect)]
-struct MessageBoard;
+impl GlobalTimer {
+    fn new() -> Self {
+        Self {
+            timer: Timer::new(
+                Duration::from_secs_f32(GLOBAL_FRAME_TIME),
+                TimerMode::Repeating,
+            ),
+            frame: 3,
+        }
+    }
+}
 
-#[derive(Clone, Copy, PartialEq, Eq, Component, Reflect)]
+#[derive(Clone, Copy, PartialEq, Component)]
 enum Direction {
     North,
     East,
@@ -48,126 +60,407 @@ enum Direction {
 }
 
 impl Direction {
-    fn as_vec2(&self) -> Vec2 {
+    pub fn as_vec2(&self) -> Vec2 {
         match self {
-            Direction::North => (0.0, 1.0).into(),
-            Direction::East => (1.0, 0.0).into(),
-            Direction::South => (0.0, -1.0).into(),
-            Direction::West => (-1.0, 0.0).into(),
+            Direction::North => Vec2::new(0.0, 1.0),
+            Direction::East => Vec2::new(1.0, 0.0),
+            Direction::South => Vec2::new(0.0, -1.0),
+            Direction::West => Vec2::new(-1.0, 0.0),
         }
     }
 }
 
-#[derive(Component, Reflect)]
-struct PlayerMove {
-    target: Vec2,
-}
-
-#[derive(PartialEq, Eq, Component, Reflect)]
-enum LivingState {
-    Alive,
+#[derive(Clone, PartialEq, Component)]
+enum Animation {
+    Idle,
+    Walking,
+    Attack { timer: Timer, frame: usize },
+    Dying { timer: Timer, frame: usize },
     Dead,
 }
 
-#[derive(Component, Reflect)]
-struct AnimationOverride {
-    timer: Timer,
-    frame: usize,
-    animation_set: &'static str,
-}
-
-impl AnimationOverride {
-    fn attack_animation() -> Self {
-        Self {
+impl Animation {
+    fn new_attack() -> Self {
+        Animation::Attack {
             timer: Timer::new(
                 Duration::from_secs_f32(ATTACK_FRAME_TIME),
                 TimerMode::Repeating,
             ),
             frame: 0,
-            animation_set: "Attack",
         }
     }
 
-    fn dying_animation() -> Self {
-        Self {
+    fn new_dying() -> Self {
+        Animation::Dying {
             timer: Timer::new(
-                Duration::from_secs_f32(DEAD_FRAME_TIME),
+                Duration::from_secs_f32(DYING_FRAME_TIME),
                 TimerMode::Repeating,
             ),
             frame: 0,
-            animation_set: "Dead",
         }
     }
-}
 
-//
-// Events
-//
-
-#[derive(Event)]
-struct EntityAnimationEvent;
-
-#[derive(Event)]
-struct LayerAnimationEvent;
-
-#[derive(Event)]
-enum PlayerMoveEvent {
-    Up,
-    Right,
-    Down,
-    Left,
-}
-
-impl PlayerMoveEvent {
-    fn as_direction(&self) -> Direction {
+    fn next_animation(&self, global_timer: &GlobalTimer, time: &Time) -> (Self, usize) {
         match self {
-            PlayerMoveEvent::Up => Direction::North,
-            PlayerMoveEvent::Right => Direction::East,
-            PlayerMoveEvent::Down => Direction::South,
-            PlayerMoveEvent::Left => Direction::West,
+            Animation::Idle => (Animation::Idle, global_timer.frame),
+            Animation::Walking => (Animation::Walking, global_timer.frame),
+            Animation::Dead => (Animation::Dead, 3),
+            Animation::Attack { timer, frame } => {
+                let mut timer = timer.clone();
+                let mut frame = *frame;
+
+                timer.tick(time.delta());
+
+                if timer.just_finished() {
+                    frame += 1;
+                }
+
+                if frame == 4 {
+                    (Animation::Idle, global_timer.frame)
+                } else {
+                    (Animation::Attack { timer, frame }, frame)
+                }
+            }
+            Animation::Dying { timer, frame } => {
+                let mut timer = timer.clone();
+                let mut frame = *frame;
+
+                timer.tick(time.delta());
+
+                if timer.just_finished() {
+                    frame += 1;
+                }
+
+                if frame == 4 {
+                    (Animation::Dead, 3)
+                } else {
+                    (Animation::Dying { timer, frame }, frame)
+                }
+            }
         }
     }
 }
 
-#[derive(Event)]
-struct PlayerInteract;
-
-#[derive(Event)]
-struct PlayerBumpEvent {
-    ecs_entity: Entity,
+#[derive(Component)]
+struct PlayerMove {
+    destination: Vec2,
 }
 
-#[derive(Event)]
-enum GameOverEvent {
-    Win,
-    Lose,
+#[derive(Component)]
+struct MessageBoard;
+
+fn global_timer(time: Res<Time>, mut global_timer: ResMut<GlobalTimer>) {
+    global_timer.timer.tick(time.delta());
+
+    if global_timer.timer.just_finished() {
+        global_timer.frame += 1;
+        global_timer.frame %= 4;
+    }
 }
 
-//
-// Resources
-//
-
-#[derive(Resource, Reflect)]
-struct GlobalAnimationTimer {
-    timer: Timer,
-    frame: usize,
+fn startup(mut commands: Commands) {
+    commands.spawn((
+        Camera2d,
+        Transform::from_xyz(0.0, -128.0, 0.0).with_scale(Vec2::splat(0.4).extend(1.0)),
+    ));
 }
 
-impl GlobalAnimationTimer {
-    fn new() -> Self {
-        Self {
-            timer: Timer::new(
-                Duration::from_secs_f32(GLOBAL_FRAME_TIME),
-                TimerMode::Repeating,
-            ),
-            frame: 0,
+fn init_title_state(mut commands: Commands, asset_server: Res<AssetServer>) {
+    commands.spawn(LdtkWorld {
+        handle: asset_server.load("ldtk/axe_man_adventure.ldtk#worlds:Title"),
+        ..Default::default()
+    });
+
+    commands.spawn((
+        Name::new("MessageBoard"),
+        Text::new("Press F or Space to start!"),
+        TextFont {
+            font: asset_server.load("fonts/Primitive.ttf"),
+            font_size: 50.0,
+            ..Default::default()
+        },
+        TextColor(GRAY_500.into()),
+        TextLayout::new_with_justify(JustifyText::Center),
+        Node {
+            position_type: PositionType::Absolute,
+            bottom: Val::Px(40.0),
+            left: Val::Px(5.0),
+            right: Val::Px(5.0),
+            ..default()
+        },
+        MessageBoard,
+    ));
+}
+
+fn key_events_title_state(
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    if keyboard_input.any_just_pressed([KeyCode::KeyF, KeyCode::Space]) {
+        next_state.set(GameState::Playing);
+    }
+}
+
+fn exit_title_state(query: Single<Entity, With<LdtkWorld>>, mut commands: Commands) {
+    commands.entity(*query).despawn();
+}
+
+fn init_playing_state(
+    asset_server: Res<AssetServer>,
+    mut message_board: Single<&mut Text, With<MessageBoard>>,
+    mut commands: Commands,
+) {
+    commands.spawn(LdtkWorld {
+        handle: asset_server.load("ldtk/axe_man_adventure.ldtk#worlds:World"),
+        ..Default::default()
+    });
+
+    message_board.0 = "The Axe Man begins his adventure!".to_string();
+}
+
+fn movement_key_events(
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    grid_value_query: GridValueQuery,
+    other_entities_query: LdtkEntityInBoundsQuery<(Entity, &LdtkIid)>,
+    axe_man_query: LdtkEntityQuery<(Entity, &GlobalTransform), Without<PlayerMove>>,
+    mut commands: Commands,
+    mut next_state: ResMut<NextState<GameState>>,
+    mut message_board: Single<&mut Text, With<MessageBoard>>,
+) {
+    let up_key = keyboard_input.any_pressed([KeyCode::KeyW, KeyCode::ArrowUp]);
+    let right_key = keyboard_input.any_pressed([KeyCode::KeyD, KeyCode::ArrowRight]);
+    let down_key = keyboard_input.any_pressed([KeyCode::KeyS, KeyCode::ArrowDown]);
+    let left_key = keyboard_input.any_pressed([KeyCode::KeyA, KeyCode::ArrowLeft]);
+
+    let direction = match (up_key, right_key, down_key, left_key) {
+        (true, false, false, false) => Direction::North,
+        (false, true, false, false) => Direction::East,
+        (false, false, true, false) => Direction::South,
+        (false, false, false, true) => Direction::West,
+        _ => return,
+    };
+
+    let Some((axe_man, global_transform)) = axe_man_query.get_iid(AXE_MAN_IID) else {
+        return;
+    };
+
+    commands.entity(axe_man).insert(direction);
+
+    let destination = global_transform.translation().truncate() + 16.0 * direction.as_vec2();
+
+    if let Some((lancer, iid)) = other_entities_query.in_bounds(destination).next() {
+        if **iid == LANCER_IID {
+            info!("The Axe Man runs into The Lancer!");
+            next_state.set(GameState::GameOver);
+            message_board.0 = "The axe man has been slain!".to_string();
+            commands.entity(axe_man).insert(Animation::new_dying());
+            commands.entity(lancer).insert(Animation::new_attack());
+        }
+
+        return;
+    }
+
+    let Some(terrain_identifier) = grid_value_query.identifier_at(destination) else {
+        info!("The Axe Man is wandering in the void...");
+        return;
+    };
+
+    match terrain_identifier {
+        "water" => {}
+        terrain
+            if terrain == "grass"
+                || terrain == "dirt"
+                || terrain == "tree"
+                || terrain == "bridge" =>
+        {
+            info!("moving to: {terrain}");
+
+            let player_move = PlayerMove { destination };
+            commands
+                .entity(axe_man)
+                .insert(player_move)
+                .insert(Animation::Walking);
+        }
+        unknown => info!("The Axe Man has encountered some unknown {unknown} terrain?"),
+    }
+}
+
+fn interact_key_events(
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    other_entities_query: LdtkEntityInBoundsQuery<(Entity, &LdtkIid)>,
+    axe_man_query: LdtkEntityQuery<(Entity, &GlobalTransform, &Direction), Without<PlayerMove>>,
+    mut next_state: ResMut<NextState<GameState>>,
+    mut message_board: Single<&mut Text, With<MessageBoard>>,
+    mut commands: Commands,
+) {
+    if keyboard_input.any_just_pressed([KeyCode::KeyF, KeyCode::Space]) {
+        let Some((axe_man, global_transform, direction)) = axe_man_query.get_iid(AXE_MAN_IID)
+        else {
+            return;
+        };
+
+        let location = global_transform.translation().truncate();
+        let target = location + direction.as_vec2() * 16.0;
+
+        if let Some((lancer, iid)) = other_entities_query.in_bounds(target).next() {
+            if *iid == LANCER_IID {
+                message_board.0 = "The Vile Lancer has been vanquished!".to_string();
+                next_state.set(GameState::GameOver);
+                commands.entity(axe_man).insert(Animation::new_attack());
+                commands.entity(lancer).insert(Animation::new_dying());
+            }
+        } else {
+            commands.entity(axe_man).insert(Animation::new_attack());
         }
     }
 }
 
-//
-// Main
-//
+fn insert_game_entity_components(
+    query: Query<(Entity, &Name), Without<Direction>>,
+    mut commands: Commands,
+) {
+    for (entity, name) in query.iter() {
+        info!("Setting up the adventure for {name}");
+        commands
+            .entity(entity)
+            .insert(Direction::East)
+            .insert(Animation::Idle);
+    }
+}
+
+fn animate_water(
+    global_timer: Res<GlobalTimer>,
+    mut query: LdtkLayerQuery<(&Name, &mut Visibility)>,
+) {
+    let frame = global_timer.frame;
+
+    for (name, mut visibility) in query.iter_mut() {
+        let target_frame = match name.as_str() {
+            "Water1" => 0,
+            "Water2" => 1,
+            "Water3" => 2,
+            "Water4" => 3,
+            _ => continue,
+        };
+
+        if target_frame == frame {
+            *visibility = Visibility::Inherited;
+        } else {
+            *visibility = Visibility::Hidden;
+        }
+    }
+}
+
+fn animate_entities(
+    time: Res<Time>,
+    global_timer: Res<GlobalTimer>,
+    mut query: LdtkEntityQuery<(&FieldInstances, &Direction, &mut Animation, &mut Tile)>,
+) {
+    for (field_instances, direction, mut animation, mut tile) in query.iter_mut() {
+        let (new_animation, frame) = animation.next_animation(&global_timer, &time);
+
+        let prefix = match new_animation {
+            Animation::Idle => "Idle",
+            Animation::Walking => "Walk",
+            Animation::Attack { .. } => "Attack",
+            Animation::Dying { .. } | Animation::Dead => "Dead",
+        };
+
+        let suffix = match direction {
+            Direction::North => "North",
+            Direction::East => "Profile",
+            Direction::South => "South",
+            Direction::West => "Profile",
+        };
+
+        let identifier = format!("{}{}", prefix, suffix);
+
+        let flip_x = *direction == Direction::West;
+
+        *animation = new_animation;
+
+        let Some(mut new_tile) = field_instances.get_array_tile(&identifier, frame) else {
+            error!("missing tile?");
+            return;
+        };
+
+        new_tile.flip_x(flip_x);
+
+        *tile = new_tile;
+    }
+}
+
+fn lancer_face_axe_man(
+    axe_man_query: LdtkEntityQuery<&GlobalTransform>,
+    mut lancer_query: LdtkEntityQuery<(&GlobalTransform, &mut Direction)>,
+) {
+    let Some(axe_man_global_transform) = axe_man_query.get_iid(AXE_MAN_IID) else {
+        return;
+    };
+
+    let Some((lancer_global_transform, mut lancer_direction)) =
+        lancer_query.get_iid_mut(LANCER_IID)
+    else {
+        return;
+    };
+
+    let dir_vec = axe_man_global_transform.translation().truncate()
+        - lancer_global_transform.translation().truncate();
+
+    let direction = match (dir_vec.x < dir_vec.y, -dir_vec.x < dir_vec.y) {
+        (true, true) => Direction::North,
+        (true, false) => Direction::West,
+        (false, true) => Direction::East,
+        (false, false) => Direction::South,
+    };
+
+    *lancer_direction = direction;
+}
+
+fn player_move(
+    time: Res<Time>,
+    mut query: LdtkEntityQuery<(Entity, &mut Transform, &GlobalTransform, &PlayerMove)>,
+    mut commands: Commands,
+) {
+    let Some((axe_man, mut transform, global_transform, player_move)) =
+        query.get_iid_mut(AXE_MAN_IID)
+    else {
+        return;
+    };
+
+    let location = global_transform.translation().truncate();
+    let destination = player_move.destination;
+    let to_destination = destination - location;
+
+    if to_destination.length_squared() < 0.1 {
+        transform.translation += to_destination.extend(0.0);
+        commands
+            .entity(axe_man)
+            .remove::<PlayerMove>()
+            .insert(Animation::Idle);
+    } else {
+        let to_destination = to_destination.normalize() * PLAYER_MOVE_SPEED * time.delta_secs();
+        transform.translation += to_destination.extend(0.0);
+    }
+}
+
+fn gameover_key_events(
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut next_state: ResMut<NextState<GameState>>,
+) {
+    if keyboard_input.any_just_pressed([KeyCode::KeyF, KeyCode::Space]) {
+        next_state.set(GameState::Title);
+    }
+}
+
+fn exit_gameover_state(
+    query: Single<Entity, With<LdtkWorld>>,
+    message_board: Single<Entity, With<MessageBoard>>,
+    mut commands: Commands,
+) {
+    commands.entity(*query).despawn();
+    commands.entity(*message_board).despawn();
+}
 
 fn main() {
     let log_plugin_settings = bevy::log::LogPlugin {
@@ -208,736 +501,42 @@ fn main() {
             .set(image_plugin_settings)
             .set(asset_plugin_settings),
         ShieldtankPlugins,
-    ));
+    ))
+    .init_state::<GameState>()
+    .insert_resource(GlobalTimer::new())
+    .add_systems(Startup, startup)
+    .add_systems(Update, global_timer);
 
-    #[cfg(debug_assertions)]
-    {
-        use bevy_inspector_egui::quick::WorldInspectorPlugin;
-        app.add_plugins(WorldInspectorPlugin::default());
-    }
+    // Title state
+    app.add_systems(OnEnter(GameState::Title), init_title_state);
+    app.add_systems(
+        Update,
+        key_events_title_state.run_if(in_state(GameState::Title)),
+    );
+    app.add_systems(OnExit(GameState::Title), exit_title_state);
 
-    app.register_type::<AnimationOverride>()
-        .register_type::<Direction>()
-        .register_type::<LivingState>()
-        .register_type::<PlayerMove>();
-
-    app.init_state::<GameState>();
-
-    app.insert_resource(GlobalAnimationTimer::new());
-
-    app.add_observer(animate_idle_entities)
-        .add_observer(animate_water)
-        .add_observer(game_over_event)
-        .add_observer(player_bump_event)
-        .add_observer(player_move_event)
-        .add_observer(player_interact_event);
-
-    app.add_systems(Startup, startup);
+    // Playing state
+    app.add_systems(OnEnter(GameState::Playing), init_playing_state);
     app.add_systems(
         Update,
         (
-            initialize_entities,
-            initialize_axe_man,
-            animation_override,
-            update_global_animation_timer,
-        ),
-    );
-
-    app.add_systems(OnEnter(GameState::Title), start_title);
-    app.add_systems(OnExit(GameState::Title), cleanup_title);
-    app.add_systems(
-        Update,
-        title_keyboard_commands.run_if(in_state(GameState::Title)),
-    );
-
-    app.add_systems(OnEnter(GameState::Playing), start_playing);
-    app.add_systems(OnExit(GameState::Playing), cleanup_playing);
-    app.add_systems(
-        Update,
-        (
-            flip_sprites,
-            lancer_brood,
-            player_keyboard_commands,
+            movement_key_events,
+            interact_key_events,
+            insert_game_entity_components,
+            animate_water,
+            animate_entities,
+            lancer_face_axe_man,
             player_move,
         )
             .run_if(in_state(GameState::Playing)),
     );
 
-    app.add_systems(OnEnter(GameState::GameOver), start_gameover);
-    app.add_systems(OnExit(GameState::GameOver), cleanup_gameover);
     app.add_systems(
         Update,
-        game_over_keyboard_input.run_if(in_state(GameState::GameOver)),
+        (gameover_key_events, animate_water, animate_entities)
+            .run_if(in_state(GameState::GameOver)),
     );
+    app.add_systems(OnExit(GameState::GameOver), exit_gameover_state);
 
     app.run();
-}
-
-//
-// Startup
-//
-
-fn startup(mut commands: Commands) {
-    commands.spawn((
-        Camera2d,
-        Transform::from_xyz(0.0, -128.0, 0.0).with_scale(Vec2::splat(0.4).extend(1.0)),
-    ));
-}
-
-//
-// Title Screen
-//
-
-fn start_title(mut commands: Commands, asset_server: Res<AssetServer>) {
-    commands.spawn(WorldComponent {
-        handle: asset_server.load(PROJECT_FILE.to_string() + "#worlds:Title"),
-        config: asset_server.add(ProjectConfig::default()),
-    });
-
-    commands.spawn((
-        Name::new("MessageBoard"),
-        Text::new("Press F or Space to start!"),
-        TextFont {
-            font: asset_server.load("fonts/Primitive.ttf"),
-            font_size: 50.0,
-            ..Default::default()
-        },
-        TextColor(GRAY_500.into()),
-        TextLayout::new_with_justify(JustifyText::Center),
-        Node {
-            position_type: PositionType::Absolute,
-            bottom: Val::Px(40.0),
-            left: Val::Px(5.0),
-            right: Val::Px(5.0),
-            ..default()
-        },
-        MessageBoard,
-    ));
-}
-
-fn cleanup_title(mut shieldtank_commands: ShieldtankCommands, shieldtank_query: ShieldtankQuery) {
-    shieldtank_query.iter_worlds().for_each(|world| {
-        shieldtank_commands.world(&world).despawn_recursive();
-    });
-}
-
-fn title_keyboard_commands(
-    keyboard_input: Res<ButtonInput<KeyCode>>,
-    mut next_state: ResMut<NextState<GameState>>,
-) {
-    if keyboard_input.any_just_pressed([KeyCode::KeyF, KeyCode::Space].into_iter()) {
-        next_state.set(GameState::Playing);
-    }
-}
-
-//
-// Observers
-//
-
-#[allow(clippy::type_complexity)]
-fn animate_idle_entities(
-    trigger: Trigger<EntityAnimationEvent>,
-    global_animation_timer: Res<GlobalAnimationTimer>,
-    mut shieldtank_commands: ShieldtankCommands,
-    shieldtank_query: ShieldtankQuery,
-    player_query: Query<(
-        &Direction,
-        Option<&AnimationOverride>,
-        Option<&LivingState>,
-        Option<&PlayerMove>,
-    )>,
-) {
-    let ecs_entity = trigger.entity();
-
-    let Some((direction, animation_override, player_state, player_move)) =
-        player_query.get(ecs_entity).ok()
-    else {
-        return;
-    };
-
-    let (frame, animation_set) = match (animation_override, player_state, player_move) {
-        (Some(_), _, _) => return,
-        (_, Some(LivingState::Dead), _) => (3, "Dead"),
-        (_, _, Some(_)) => (global_animation_timer.frame, "Walk"),
-        (_, _, None) => (global_animation_timer.frame, "Idle"),
-    };
-
-    let Some(shieldtank_entity) = shieldtank_query.get_entity(ecs_entity).ok() else {
-        return;
-    };
-
-    let animation_direction = match direction {
-        Direction::North => "North",
-        Direction::South => "South",
-        Direction::East | Direction::West => "Profile",
-    };
-
-    let field_array_name = format!("{animation_set}{animation_direction}");
-
-    let Some(tile_array) = shieldtank_entity.get_field_array_tiles(&field_array_name) else {
-        error!("Could not find field array tile: {field_array_name}");
-        return;
-    };
-
-    let Some(tile) = tile_array.get(frame) else {
-        error!("field array {field_array_name} index out of range: {frame}");
-        return;
-    };
-
-    shieldtank_commands
-        .entity(&shieldtank_entity)
-        .insert(tile.clone());
-}
-
-fn animate_water(
-    _trigger: Trigger<LayerAnimationEvent>,
-    mut shieldtank_commands: ShieldtankCommands,
-    shieldtank_query: ShieldtankQuery,
-    global_animation_timer: Res<GlobalAnimationTimer>,
-) {
-    const LAYERS_TO_ANIMATE: &[&str] = &["Water1", "Water2", "Water3", "Water4"];
-
-    let frame = global_animation_timer.frame;
-
-    for level in shieldtank_query.iter_levels() {
-        for (index, layer_identifier) in LAYERS_TO_ANIMATE.iter().enumerate() {
-            let Some(layer) = level
-                .iter_layers()
-                .filter_identifier(layer_identifier)
-                .next()
-            else {
-                return;
-            };
-
-            if frame == index {
-                shieldtank_commands
-                    .layer(&layer)
-                    .insert(Visibility::Inherited);
-            } else {
-                shieldtank_commands.layer(&layer).insert(Visibility::Hidden);
-            }
-        }
-    }
-}
-
-fn game_over_event(
-    trigger: Trigger<GameOverEvent>,
-    mut next_state: ResMut<NextState<GameState>>,
-    mut message_board_query: Query<&mut Text, With<MessageBoard>>,
-) {
-    let msg = match trigger.event() {
-        GameOverEvent::Win => "The Axe Man has slain the Vile Lancer!",
-        GameOverEvent::Lose => "The Axe Man was slain!",
-    };
-
-    let mut message_board = message_board_query.single_mut();
-    message_board.0 = format!("{}\nPress F or Space to return to the main menu...", msg);
-
-    next_state.set(GameState::GameOver);
-}
-
-fn player_bump_event(
-    trigger: Trigger<PlayerBumpEvent>,
-    mut commands: Commands,
-    mut shieldtank_commands: ShieldtankCommands,
-    shieldtank_query: ShieldtankQuery,
-) {
-    let bumped_entity = trigger.event().ecs_entity;
-
-    let Some(bumped_entity) = shieldtank_query.get_entity(bumped_entity).ok() else {
-        return;
-    };
-
-    let Some(axe_man) = shieldtank_query.entity_by_iid(AXE_MAN_IID) else {
-        return;
-    };
-
-    let Some(lancer) = shieldtank_query.entity_by_iid(LANCER_IID) else {
-        return;
-    };
-
-    if lancer == bumped_entity {
-        shieldtank_commands
-            .entity(&lancer)
-            .insert(AnimationOverride::attack_animation());
-
-        shieldtank_commands
-            .entity(&axe_man)
-            .insert(LivingState::Dead)
-            .insert(AnimationOverride::dying_animation());
-
-        commands.trigger(GameOverEvent::Lose);
-    }
-}
-
-fn player_move_event(
-    trigger: Trigger<PlayerMoveEvent>,
-    mut shieldtank_commands: ShieldtankCommands,
-    shieldtank_query: ShieldtankQuery,
-    mut message_board_query: Query<&mut Text, With<MessageBoard>>,
-) {
-    let Some(axe_man) = shieldtank_query.get_entity(trigger.entity()).ok() else {
-        return;
-    };
-
-    let mut message_board = message_board_query.single_mut();
-
-    let player_move_event = trigger.event();
-
-    let direction = player_move_event.as_direction();
-
-    shieldtank_commands
-        .entity(&axe_man)
-        .insert(direction)
-        .trigger(EntityAnimationEvent);
-
-    let Some(layer) = axe_man.get_layer() else {
-        error!("couldn't find layer?");
-        return;
-    };
-
-    let Some(world) = axe_man.get_world() else {
-        error!("couldn't find world?");
-        return;
-    };
-
-    let grid_cell_size = layer.get_asset().grid_cell_size as f32;
-
-    let axe_man_world_location = axe_man.world_location();
-
-    let world_attempted_move = axe_man_world_location + grid_cell_size * direction.as_vec2();
-
-    if let Some(entity_at) = world
-        .iter_entities()
-        .filter_world_location_in_region(world_attempted_move)
-        .next()
-    {
-        shieldtank_commands
-            .entity(&axe_man)
-            .trigger(PlayerBumpEvent {
-                ecs_entity: entity_at.get_ecs_entity(),
-            });
-
-        return;
-    };
-
-    if let Some(int_grid_at) = world.int_grid_at(world_attempted_move) {
-        // TODO: Change to an attempt_move event of some kind
-        let movable_terrain = match int_grid_at.identifier.as_deref() {
-            Some("grass") => {
-                message_board.0 = "The Axe Man is walking on the grass.".to_string();
-                true
-            }
-            Some("dirt") => {
-                message_board.0 = "The Axe Man is walking on dirt.".to_string();
-                true
-            }
-            Some("tree") => {
-                message_board.0 = "The Axe Man is shading under a tree.".to_string();
-                true
-            }
-            Some("bridge") => {
-                message_board.0 = "The Axe Man is crossing The Bridge of Woe!".to_string();
-                true
-            }
-            Some("water") => {
-                message_board.0 = "The Axe Man cannot walk on water!".to_string();
-                false
-            }
-            Some(unknown) => {
-                error!("Walking on unknown terrain: {unknown}");
-                false
-            }
-            None => {
-                error!("Int grid with no identifier...");
-                false
-            }
-        };
-
-        if movable_terrain {
-            shieldtank_commands.entity(&axe_man).insert(PlayerMove {
-                target: world_attempted_move,
-            });
-        }
-    }
-}
-
-fn player_interact_event(
-    trigger: Trigger<PlayerInteract>,
-    mut commands: Commands,
-    mut shieldtank_commands: ShieldtankCommands,
-    shieldtank_query: ShieldtankQuery,
-    direction_query: Query<&Direction>,
-    mut message_board_query: Query<&mut Text, With<MessageBoard>>,
-) {
-    let ecs_entity = trigger.entity();
-
-    let Some(axe_man) = shieldtank_query.get_entity(ecs_entity).ok() else {
-        return;
-    };
-
-    let Some(direction) = direction_query.get(ecs_entity).ok() else {
-        return;
-    };
-
-    let Some(layer) = axe_man.get_layer() else {
-        return;
-    };
-
-    let Some(world) = axe_man.get_world() else {
-        return;
-    };
-
-    let mut message_board = message_board_query.single_mut();
-
-    let axe_man_world_location = axe_man.world_location();
-
-    let grid_cell_size = layer.get_asset().grid_cell_size as f32;
-
-    let world_attempted_move = axe_man_world_location + grid_cell_size * direction.as_vec2();
-
-    if let Some(interacted_entity) = world
-        .iter_entities()
-        .filter_world_location_in_region(world_attempted_move)
-        .next()
-    {
-        let Some(lancer) = shieldtank_query.entity_by_iid(LANCER_IID) else {
-            return;
-        };
-
-        if interacted_entity == lancer {
-            shieldtank_commands
-                .entity(&axe_man)
-                .insert(AnimationOverride::attack_animation());
-
-            shieldtank_commands
-                .entity(&lancer)
-                .insert(LivingState::Dead)
-                .insert(AnimationOverride::dying_animation());
-
-            commands.trigger(GameOverEvent::Win);
-        } else {
-            let Some(name) = interacted_entity.get_field_string("Name") else {
-                return;
-            };
-
-            let Some(replies) = interacted_entity.get_field_array_string("Replies") else {
-                return;
-            };
-
-            let Some(random_reply) = replies.choose(&mut rand::rng()) else {
-                return;
-            };
-
-            message_board.0 = format!("{name} says: {random_reply}");
-        }
-    } else {
-        shieldtank_commands
-            .entity(&axe_man)
-            .insert(AnimationOverride::attack_animation());
-
-        message_board.0 = "The Axe Man swats at a mosquito.".to_string();
-    };
-}
-
-//
-// Always Runnint Systems
-//
-
-fn animation_override(
-    time: Res<Time>,
-    mut query: Query<(Entity, &mut AnimationOverride, &Direction)>,
-    mut shieldtank_commands: ShieldtankCommands,
-    shieldtank_query: ShieldtankQuery,
-) {
-    for (ecs_entity, mut animation_override, direction) in query.iter_mut() {
-        animation_override.timer.tick(time.delta());
-
-        if animation_override.timer.just_finished() {
-            let Some(shieldtank_entity) = shieldtank_query.get_entity(ecs_entity).ok() else {
-                return;
-            };
-
-            let frame = animation_override.frame;
-            let animation_set = animation_override.animation_set;
-
-            if frame < 3 {
-                animation_override.frame += 1;
-                let animation_direction = match direction {
-                    Direction::North => "North",
-                    Direction::South => "South",
-                    Direction::East | Direction::West => "Profile",
-                };
-
-                let field_array_name = format!("{animation_set}{animation_direction}");
-
-                let Some(tile_array) = shieldtank_entity.get_field_array_tiles(&field_array_name)
-                else {
-                    error!("aah!");
-                    return;
-                };
-
-                let Some(tile) = tile_array.get(frame).cloned() else {
-                    error!("aah!");
-                    return;
-                };
-
-                shieldtank_commands.entity(&shieldtank_entity).insert(tile);
-            } else {
-                shieldtank_commands
-                    .entity(&shieldtank_entity)
-                    .remove::<AnimationOverride>()
-                    .trigger(EntityAnimationEvent);
-            }
-        }
-    }
-}
-
-fn initialize_entities(
-    mut shieldtank_commands: ShieldtankCommands,
-    shieldtank_query: ShieldtankQuery,
-) {
-    shieldtank_query
-        .iter_entities()
-        .filter_just_finalized()
-        .filter_tag("animate")
-        .for_each(|item| {
-            shieldtank_commands.entity(&item).insert(Direction::East);
-        });
-}
-
-fn initialize_axe_man(
-    mut shieldtank_commands: ShieldtankCommands,
-    shieldtank_query: ShieldtankQuery,
-) {
-    let Some(axe_man) = shieldtank_query
-        .iter_entities()
-        .filter_just_finalized()
-        .find_iid(AXE_MAN_IID)
-    else {
-        return;
-    };
-
-    shieldtank_commands
-        .entity(&axe_man)
-        .insert(LivingState::Alive);
-}
-
-fn update_global_animation_timer(
-    time: Res<Time>,
-    mut global_animation_timer: ResMut<GlobalAnimationTimer>,
-    mut commands: Commands,
-    mut shieldtank_commands: ShieldtankCommands,
-    shieldtank_query: ShieldtankQuery,
-) {
-    global_animation_timer.timer.tick(time.delta());
-
-    if global_animation_timer.timer.just_finished() {
-        global_animation_timer.frame += 1;
-        global_animation_timer.frame %= 4;
-
-        commands.trigger(LayerAnimationEvent);
-
-        shieldtank_query
-            .iter_entities()
-            .filter_tag("animate")
-            .for_each(|shieldtank_entity| {
-                shieldtank_commands
-                    .entity(&shieldtank_entity)
-                    .trigger(EntityAnimationEvent);
-            });
-    }
-}
-
-//
-// Playing Systems
-//
-
-fn start_playing(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-    mut message_board_query: Query<&mut Text, With<MessageBoard>>,
-) {
-    // commands.spawn(ProjectComponent {
-    //     handle: asset_server.load(PROJECT_FILE.to_string()),
-    //     config: asset_server.add(ProjectConfig {
-    //         load_pattern: LoadPattern::Pattern("worlds:World*".to_string()),
-    //         ..Default::default()
-    //     }),
-    // });
-
-    commands.spawn(WorldComponent {
-        handle: asset_server.load(PROJECT_FILE.to_string() + "#worlds:World"),
-        config: asset_server.add(ProjectConfig::default()),
-    });
-
-    let mut message_board = message_board_query.single_mut();
-    message_board.0 = "The Axe Man begins his adventure!".to_string();
-}
-
-fn cleanup_playing() {}
-
-fn flip_sprites(
-    direction_changed_query: Query<(Entity, &Direction), Changed<Direction>>,
-    mut shieldtank_commands: ShieldtankCommands,
-    shieldtank_query: ShieldtankQuery,
-) {
-    for (ecs_entity, direction) in direction_changed_query.iter() {
-        let Some(shieldtank_entity) = shieldtank_query.get_entity(ecs_entity).ok() else {
-            return;
-        };
-
-        if *direction == Direction::West {
-            shieldtank_commands.entity(&shieldtank_entity).flip_x(true);
-        } else {
-            shieldtank_commands.entity(&shieldtank_entity).flip_x(false);
-        }
-    }
-}
-
-fn lancer_brood(
-    mut shieldtank_commands: ShieldtankCommands,
-    shieldtank_query: ShieldtankQuery,
-    living_query: Query<&LivingState>,
-) {
-    let Some(axe_man) = shieldtank_query.entity_by_iid(AXE_MAN_IID) else {
-        return;
-    };
-
-    let Some(lancer) = shieldtank_query.entity_by_iid(LANCER_IID) else {
-        return;
-    };
-
-    if let Ok(LivingState::Dead) = living_query.get(lancer.get_ecs_entity()) {
-        // can't brood if you're dead...
-        return;
-    };
-
-    let dir_vec = axe_man.world_location() - lancer.world_location();
-
-    let direction = match (dir_vec.x < dir_vec.y, -dir_vec.x < dir_vec.y) {
-        (true, true) => Direction::North,
-        (true, false) => Direction::West,
-        (false, true) => Direction::East,
-        (false, false) => Direction::South,
-    };
-
-    shieldtank_commands
-        .entity(&lancer)
-        .insert(direction)
-        .trigger(EntityAnimationEvent);
-}
-
-fn player_keyboard_commands(
-    keyboard_input: Res<ButtonInput<KeyCode>>,
-    mut shieldtank_commands: ShieldtankCommands,
-    shieldtank_query: ShieldtankQuery,
-    player_move_query: Query<Entity, With<PlayerMove>>,
-) {
-    let Some(axe_man) = shieldtank_query.entity_by_iid(AXE_MAN_IID) else {
-        return;
-    };
-
-    if player_move_query.contains(axe_man.get_ecs_entity()) {
-        return;
-    };
-
-    let up_pressed = keyboard_input.any_pressed([KeyCode::ArrowUp, KeyCode::KeyW]);
-    let right_pressed = keyboard_input.any_pressed([KeyCode::ArrowRight, KeyCode::KeyD]);
-    let down_pressed = keyboard_input.any_pressed([KeyCode::ArrowDown, KeyCode::KeyS]);
-    let left_pressed = keyboard_input.any_pressed([KeyCode::ArrowLeft, KeyCode::KeyA]);
-
-    match (up_pressed, right_pressed, down_pressed, left_pressed) {
-        (true, false, false, false) => {
-            shieldtank_commands
-                .entity(&axe_man)
-                .trigger(PlayerMoveEvent::Up);
-        }
-        (false, true, false, false) => {
-            shieldtank_commands
-                .entity(&axe_man)
-                .trigger(PlayerMoveEvent::Right);
-        }
-        (false, false, true, false) => {
-            shieldtank_commands
-                .entity(&axe_man)
-                .trigger(PlayerMoveEvent::Down);
-        }
-        (false, false, false, true) => {
-            shieldtank_commands
-                .entity(&axe_man)
-                .trigger(PlayerMoveEvent::Left);
-        }
-        _ => (),
-    };
-
-    if keyboard_input.just_pressed(KeyCode::Space) || keyboard_input.just_pressed(KeyCode::KeyF) {
-        shieldtank_commands.entity(&axe_man).trigger(PlayerInteract);
-    }
-}
-
-fn player_move(
-    time: Res<Time>,
-    mut shieldtank_commands: ShieldtankCommands,
-    shieldtank_query: ShieldtankQuery,
-    player_move_query: Query<(Entity, &PlayerMove), With<PlayerMove>>,
-) {
-    let Some((axe_man_ecs_entity, PlayerMove { target })) = player_move_query.get_single().ok()
-    else {
-        return;
-    };
-
-    let Some(axe_man) = shieldtank_query.get_entity(axe_man_ecs_entity).ok() else {
-        warn!("some other entity besides axe man with a PlayerMove component?");
-        return;
-    };
-
-    let axe_man_world_location = axe_man.world_location();
-
-    let to_target = target - axe_man_world_location;
-
-    if to_target.length_squared() < 0.01 {
-        shieldtank_commands
-            .entity(&axe_man)
-            .remove::<PlayerMove>()
-            .set_world_location(*target);
-    } else {
-        let new_location = axe_man_world_location
-            + time.delta_secs() * PLAYER_MOVE_SPEED * to_target.normalize_or_zero();
-
-        shieldtank_commands
-            .entity(&axe_man)
-            .set_world_location(new_location);
-    }
-}
-
-//
-// Game Over Systems
-//
-
-fn start_gameover() {}
-
-fn cleanup_gameover(
-    mut commands: Commands,
-    mut shieldtank_commands: ShieldtankCommands,
-    shieldtank_query: ShieldtankQuery,
-    message_board_query: Query<Entity, With<MessageBoard>>,
-) {
-    shieldtank_query.iter_worlds().for_each(|world| {
-        shieldtank_commands.world(&world).despawn_recursive();
-    });
-
-    let message_board = message_board_query.single();
-    commands.entity(message_board).despawn_recursive();
-}
-
-fn game_over_keyboard_input(
-    keyboard_input: Res<ButtonInput<KeyCode>>,
-    mut next_state: ResMut<NextState<GameState>>,
-) {
-    if keyboard_input.any_just_pressed([KeyCode::KeyF, KeyCode::Space].into_iter()) {
-        info!("A key pressed during game over...");
-
-        next_state.set(GameState::Title);
-    }
 }

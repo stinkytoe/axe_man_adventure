@@ -1,0 +1,3 @@
+[submodule "shieldtank"]
+	path = shieldtank
+	url = git@github.com:stinkytoe/shieldtank.git
