@@ -1,10 +1,11 @@
+use core::f32;
 use std::time::Duration;
 
+use bevy::DefaultPlugins;
 use bevy::color::palettes::tailwind::GRAY_500;
 use bevy::prelude::*;
 use bevy::window::WindowMode;
-use bevy::DefaultPlugins;
-use shieldtank::bevy_ldtk_asset::iid::{iid, Iid};
+use shieldtank::bevy_ldtk_asset::iid::{Iid, iid};
 use shieldtank::component::field_instances::FieldInstances;
 use shieldtank::component::iid::LdtkIid;
 use shieldtank::component::tile::Tile;
@@ -13,6 +14,7 @@ use shieldtank::plugin::ShieldtankPlugins;
 use shieldtank::query::component::{LdtkEntityQuery, LdtkLayerQuery};
 use shieldtank::query::grid_value::GridValueQuery;
 use shieldtank::query::in_bounds::LdtkEntityInBoundsQuery;
+use tinyrand::{Rand, StdRand};
 
 const AXE_MAN_IID: Iid = iid!("a0170640-9b00-11ef-aa23-11f9c6be2b6e");
 const LANCER_IID: Iid = iid!("85f22ca0-fec0-11ee-8cdd-41f7def1ae8a");
@@ -287,8 +289,9 @@ fn movement_key_events(
 
 fn interact_key_events(
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    other_entities_query: LdtkEntityInBoundsQuery<(Entity, &LdtkIid)>,
+    other_entities_query: LdtkEntityInBoundsQuery<(Entity, &LdtkIid, Option<&FieldInstances>)>,
     axe_man_query: LdtkEntityQuery<(Entity, &GlobalTransform, &Direction), Without<PlayerMove>>,
+    mut rand: Local<StdRand>,
     mut next_state: ResMut<NextState<GameState>>,
     mut message_board: Single<&mut Text, With<MessageBoard>>,
     mut commands: Commands,
@@ -302,12 +305,20 @@ fn interact_key_events(
         let location = global_transform.translation().truncate();
         let target = location + direction.as_vec2() * 16.0;
 
-        if let Some((lancer, iid)) = other_entities_query.in_bounds(target).next() {
+        if let Some((lancer, iid, field_instances)) = other_entities_query.in_bounds(target).next()
+        {
             if *iid == LANCER_IID {
                 message_board.0 = "The Vile Lancer has been vanquished!".to_string();
                 next_state.set(GameState::GameOver);
                 commands.entity(axe_man).insert(Animation::new_attack());
                 commands.entity(lancer).insert(Animation::new_dying());
+            } else if let Some(field_instances) = field_instances {
+                let Some(replies) = field_instances.get_array_string("Replies") else {
+                    return;
+                };
+
+                let rand = rand.next_usize() % replies.len();
+                message_board.0 = replies[rand].clone();
             }
         } else {
             commands.entity(axe_man).insert(Animation::new_attack());
@@ -379,8 +390,13 @@ fn animate_entities(
 
         *animation = new_animation;
 
-        let Some(mut new_tile) = field_instances.get_array_tile(&identifier, frame) else {
-            error!("missing tile?");
+        let Some(tiles) = field_instances.get_array_tile(&identifier) else {
+            error!("missing tiles field instance? {identifier}");
+            return;
+        };
+
+        let Some(mut new_tile) = tiles.get(frame).cloned() else {
+            error!("bad frame! {frame}");
             return;
         };
 
