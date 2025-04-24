@@ -2,14 +2,17 @@
 name = "axe_man_adventure"
 authors = ["stinkytoe <stinkytoe42@yahoo.com>"]
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 bevy = { git = "https://github.com/bevyengine/bevy.git", tag = "v0.16.0-rc.5" }
 
+tinyrand = "0.5"
+
 #bevy-inspector-egui = "0.30"
 
-shieldtank = { git = "https://github.com/stinkytoe/shieldtank.git" }
+#shieldtank = { git = "https://github.com/stinkytoe/shieldtank.git" }
+shieldtank = { path = "../shieldtank/" }
 
 [features]
 default = [
