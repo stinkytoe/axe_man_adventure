@@ -6706,12 +6706,19 @@
 										"id": "V_String",
 										"params": ["Thom"]
 									}] },
-									{ "__identifier": "Replies", "__type": "Array<String>", "__value": [ "Hi!", "What?" ], "__tile": null, "defUid": 1896, "realEditorValues": [ {
+									{ "__identifier": "Replies", "__type": "Array<String>", "__value": [
+										"The vile lancer is a plague on this land!",
+										"We were once a prosperous land.",
+										"The green lancer has taken over!"
+									], "__tile": null, "defUid": 1896, "realEditorValues": [ {
 										"id": "V_String",
-										"params": ["Hi!"]
+										"params": ["The vile lancer is a plague on this land!"]
 									}, {
 										"id": "V_String",
-										"params": ["What?"]
+										"params": ["We were once a prosperous land."]
+									}, {
+										"id": "V_String",
+										"params": ["The green lancer has taken over!"]
 									} ] }
 								],
 								"__worldX": -104,
