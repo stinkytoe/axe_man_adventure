@@ -11,9 +11,9 @@ use shieldtank::component::iid::LdtkIid;
 use shieldtank::component::tile::Tile;
 use shieldtank::component::world::LdtkWorld;
 use shieldtank::plugin::ShieldtankPlugins;
-use shieldtank::query::component::{LdtkEntityQuery, LdtkLayerQuery};
+use shieldtank::query::entity::LdtkEntityQuery;
 use shieldtank::query::grid_value::GridValueQuery;
-use shieldtank::query::in_bounds::LdtkEntityInBoundsQuery;
+use shieldtank::query::layer::LdtkLayerQuery;
 use tinyrand::{Rand, StdRand};
 
 const AXE_MAN_IID: Iid = iid!("a0170640-9b00-11ef-aa23-11f9c6be2b6e");
@@ -223,7 +223,7 @@ fn init_playing_state(
 fn movement_key_events(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     grid_value_query: GridValueQuery,
-    other_entities_query: LdtkEntityInBoundsQuery<(Entity, &LdtkIid)>,
+    other_entities_query: LdtkEntityQuery<(Entity, &LdtkIid)>,
     axe_man_query: LdtkEntityQuery<(Entity, &GlobalTransform), Without<PlayerMove>>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<GameState>>,
@@ -250,7 +250,7 @@ fn movement_key_events(
 
     let destination = global_transform.translation().truncate() + 16.0 * direction.as_vec2();
 
-    if let Some((lancer, iid)) = other_entities_query.in_bounds(destination).next() {
+    if let Some((lancer, iid)) = other_entities_query.location_in_bounds(destination).next() {
         if **iid == LANCER_IID {
             info!("The Axe Man runs into The Lancer!");
             next_state.set(GameState::GameOver);
@@ -268,28 +268,30 @@ fn movement_key_events(
     };
 
     match terrain_identifier {
+        // Cannot walk on water.
         "water" => {}
-        terrain
-            if terrain == "grass"
-                || terrain == "dirt"
-                || terrain == "tree"
-                || terrain == "bridge" =>
+        // Terrain types which can be walked on
+        terrain_identifier
+            if terrain_identifier == "grass"
+                || terrain_identifier == "dirt"
+                || terrain_identifier == "tree"
+                || terrain_identifier == "bridge" =>
         {
-            info!("moving to: {terrain}");
-
             let player_move = PlayerMove { destination };
             commands
                 .entity(axe_man)
                 .insert(player_move)
                 .insert(Animation::Walking);
         }
-        unknown => info!("The Axe Man has encountered some unknown {unknown} terrain?"),
+        // Terrain types which we don't have a case for. We emit a warning and don't allow
+        // movement.
+        unknown => warn!("The Axe Man has encountered some unknown {unknown} terrain?"),
     }
 }
 
 fn interact_key_events(
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    other_entities_query: LdtkEntityInBoundsQuery<(Entity, &LdtkIid, Option<&FieldInstances>)>,
+    other_entities_query: LdtkEntityQuery<(Entity, &LdtkIid, Option<&FieldInstances>)>,
     axe_man_query: LdtkEntityQuery<(Entity, &GlobalTransform, &Direction), Without<PlayerMove>>,
     mut rand: Local<StdRand>,
     mut next_state: ResMut<NextState<GameState>>,
@@ -305,8 +307,10 @@ fn interact_key_events(
         let location = global_transform.translation().truncate();
         let target = location + direction.as_vec2() * 16.0;
 
-        if let Some((lancer, iid, field_instances)) = other_entities_query.in_bounds(target).next()
+        if let Some((lancer, iid, field_instances)) =
+            other_entities_query.location_in_bounds(target).next()
         {
+            // Some other entity occupies this space. Is it The Lancer, or just one of the NPCs?
             if *iid == LANCER_IID {
                 message_board.0 = "The Vile Lancer has been vanquished!".to_string();
                 next_state.set(GameState::GameOver);
@@ -321,6 +325,7 @@ fn interact_key_events(
                 message_board.0 = replies[rand].clone();
             }
         } else {
+            // The Axe Man swings his axe at nothing!
             commands.entity(axe_man).insert(Animation::new_attack());
         }
     }
@@ -330,7 +335,7 @@ fn insert_game_entity_components(
     query: Query<(Entity, &Name), Without<Direction>>,
     mut commands: Commands,
 ) {
-    for (entity, name) in query.iter() {
+    for (entity, name) in query {
         info!("Setting up the adventure for {name}");
         commands
             .entity(entity)
@@ -368,9 +373,9 @@ fn animate_entities(
     mut query: LdtkEntityQuery<(&FieldInstances, &Direction, &mut Animation, &mut Tile)>,
 ) {
     for (field_instances, direction, mut animation, mut tile) in query.iter_mut() {
-        let (new_animation, frame) = animation.next_animation(&global_timer, &time);
+        let (next_animation, frame) = animation.next_animation(&global_timer, &time);
 
-        let prefix = match new_animation {
+        let prefix = match next_animation {
             Animation::Idle => "Idle",
             Animation::Walking => "Walk",
             Animation::Attack { .. } => "Attack",
@@ -388,7 +393,7 @@ fn animate_entities(
 
         let flip_x = *direction == Direction::West;
 
-        *animation = new_animation;
+        *animation = next_animation;
 
         let Some(tiles) = field_instances.get_array_tile(&identifier) else {
             error!("missing tiles field instance? {identifier}");
