@@ -1,15 +1,17 @@
-use core::f32;
 use std::time::Duration;
 
 use bevy::DefaultPlugins;
 use bevy::color::palettes::tailwind::GRAY_500;
 use bevy::prelude::*;
 use bevy::window::WindowMode;
+use bevy_inspector_egui::bevy_egui::EguiPlugin;
+use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use shieldtank::bevy_ldtk_asset::iid::{Iid, iid};
-use shieldtank::component::field_instances::FieldInstances;
+use shieldtank::component::field_instances::LdtkFieldInstances;
 use shieldtank::component::iid::LdtkIid;
-use shieldtank::component::tile::Tile;
+use shieldtank::component::tile::LdtkTile;
 use shieldtank::component::world::LdtkWorld;
+use shieldtank::debug_gizmos::DebugGizmos;
 use shieldtank::plugin::ShieldtankPlugins;
 use shieldtank::query::entity::LdtkEntityQuery;
 use shieldtank::query::grid_value::GridValueQuery;
@@ -48,7 +50,7 @@ impl GlobalTimer {
                 Duration::from_secs_f32(GLOBAL_FRAME_TIME),
                 TimerMode::Repeating,
             ),
-            frame: 3,
+            frame: 0,
         }
     }
 }
@@ -165,6 +167,27 @@ fn startup(mut commands: Commands) {
         Camera2d,
         Transform::from_xyz(0.0, -128.0, 0.0).with_scale(Vec2::splat(0.4).extend(1.0)),
     ));
+}
+
+fn debug_keyboard_commands(
+    keyboard_input: Res<ButtonInput<KeyCode>>,
+    mut debug_gizmos: ResMut<DebugGizmos>,
+) {
+    if keyboard_input.just_pressed(KeyCode::F1) {
+        debug_gizmos.level_gizmos = !debug_gizmos.level_gizmos;
+    }
+
+    if keyboard_input.just_pressed(KeyCode::F2) {
+        debug_gizmos.layer_gizmos = !debug_gizmos.layer_gizmos;
+    }
+
+    if keyboard_input.just_pressed(KeyCode::F3) {
+        debug_gizmos.grid_values_query = !debug_gizmos.grid_values_query;
+    }
+
+    if keyboard_input.just_pressed(KeyCode::F4) {
+        debug_gizmos.entity_gizmos = !debug_gizmos.entity_gizmos;
+    }
 }
 
 fn init_title_state(mut commands: Commands, asset_server: Res<AssetServer>) {
@@ -291,7 +314,7 @@ fn movement_key_events(
 
 fn interact_key_events(
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    other_entities_query: LdtkEntityQuery<(Entity, &LdtkIid, Option<&FieldInstances>)>,
+    other_entities_query: LdtkEntityQuery<(Entity, &LdtkIid, Option<&LdtkFieldInstances>)>,
     axe_man_query: LdtkEntityQuery<(Entity, &GlobalTransform, &Direction), Without<PlayerMove>>,
     mut rand: Local<StdRand>,
     mut next_state: ResMut<NextState<GameState>>,
@@ -310,7 +333,6 @@ fn interact_key_events(
         if let Some((lancer, iid, field_instances)) =
             other_entities_query.location_in_bounds(target).next()
         {
-            // Some other entity occupies this space. Is it The Lancer, or just one of the NPCs?
             if *iid == LANCER_IID {
                 message_board.0 = "The Vile Lancer has been vanquished!".to_string();
                 next_state.set(GameState::GameOver);
@@ -325,7 +347,6 @@ fn interact_key_events(
                 message_board.0 = replies[rand].clone();
             }
         } else {
-            // The Axe Man swings his axe at nothing!
             commands.entity(axe_man).insert(Animation::new_attack());
         }
     }
@@ -370,7 +391,12 @@ fn animate_water(
 fn animate_entities(
     time: Res<Time>,
     global_timer: Res<GlobalTimer>,
-    mut query: LdtkEntityQuery<(&FieldInstances, &Direction, &mut Animation, &mut Tile)>,
+    mut query: LdtkEntityQuery<(
+        &LdtkFieldInstances,
+        &Direction,
+        &mut Animation,
+        &mut LdtkTile,
+    )>,
 ) {
     for (field_instances, direction, mut animation, mut tile) in query.iter_mut() {
         let (next_animation, frame) = animation.next_animation(&global_timer, &time);
@@ -522,11 +548,15 @@ fn main() {
             .set(image_plugin_settings)
             .set(asset_plugin_settings),
         ShieldtankPlugins,
+        EguiPlugin {
+            enable_multipass_for_primary_context: true,
+        },
+        WorldInspectorPlugin::default(),
     ))
     .init_state::<GameState>()
     .insert_resource(GlobalTimer::new())
     .add_systems(Startup, startup)
-    .add_systems(Update, global_timer);
+    .add_systems(Update, (global_timer, debug_keyboard_commands));
 
     // Title state
     app.add_systems(OnEnter(GameState::Title), init_title_state);
