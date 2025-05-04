@@ -4,8 +4,6 @@ use bevy::DefaultPlugins;
 use bevy::color::palettes::tailwind::GRAY_500;
 use bevy::prelude::*;
 use bevy::window::WindowMode;
-use bevy_inspector_egui::bevy_egui::EguiPlugin;
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use shieldtank::bevy_ldtk_asset::iid::{Iid, iid};
 use shieldtank::component::field_instances::LdtkFieldInstances;
 use shieldtank::component::iid::LdtkIid;
@@ -16,6 +14,8 @@ use shieldtank::plugin::ShieldtankPlugins;
 use shieldtank::query::entity::LdtkEntityQuery;
 use shieldtank::query::grid_value::GridValueQuery;
 use shieldtank::query::layer::LdtkLayerQuery;
+// use shieldtank::query::location::{LdtkLocationData, LdtkLocationDataReadOnly};
+use shieldtank::query::location::{LdtkLocation, LdtkLocationMut};
 use tinyrand::{Rand, StdRand};
 
 const AXE_MAN_IID: Iid = iid!("a0170640-9b00-11ef-aa23-11f9c6be2b6e");
@@ -247,7 +247,7 @@ fn movement_key_events(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     grid_value_query: GridValueQuery,
     other_entities_query: LdtkEntityQuery<(Entity, &LdtkIid)>,
-    axe_man_query: LdtkEntityQuery<(Entity, &GlobalTransform), Without<PlayerMove>>,
+    axe_man_query: LdtkEntityQuery<(Entity, LdtkLocation), Without<PlayerMove>>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<GameState>>,
     mut message_board: Single<&mut Text, With<MessageBoard>>,
@@ -265,13 +265,13 @@ fn movement_key_events(
         _ => return,
     };
 
-    let Some((axe_man, global_transform)) = axe_man_query.get_iid(AXE_MAN_IID) else {
+    let Some((axe_man, location)) = axe_man_query.get_iid(AXE_MAN_IID) else {
         return;
     };
 
     commands.entity(axe_man).insert(direction);
 
-    let destination = global_transform.translation().truncate() + 16.0 * direction.as_vec2();
+    let destination = location.get() + 16.0 * direction.as_vec2();
 
     if let Some((lancer, iid)) = other_entities_query.location_in_bounds(destination).next() {
         if **iid == LANCER_IID {
@@ -315,19 +315,18 @@ fn movement_key_events(
 fn interact_key_events(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     other_entities_query: LdtkEntityQuery<(Entity, &LdtkIid, Option<&LdtkFieldInstances>)>,
-    axe_man_query: LdtkEntityQuery<(Entity, &GlobalTransform, &Direction), Without<PlayerMove>>,
+    axe_man_query: LdtkEntityQuery<(Entity, LdtkLocation, &Direction), Without<PlayerMove>>,
     mut rand: Local<StdRand>,
     mut next_state: ResMut<NextState<GameState>>,
     mut message_board: Single<&mut Text, With<MessageBoard>>,
     mut commands: Commands,
 ) {
     if keyboard_input.any_just_pressed([KeyCode::KeyF, KeyCode::Space]) {
-        let Some((axe_man, global_transform, direction)) = axe_man_query.get_iid(AXE_MAN_IID)
-        else {
+        let Some((axe_man, location, direction)) = axe_man_query.get_iid(AXE_MAN_IID) else {
             return;
         };
 
-        let location = global_transform.translation().truncate();
+        let location = location.get();
         let target = location + direction.as_vec2() * 16.0;
 
         if let Some((lancer, iid, field_instances)) =
@@ -438,8 +437,8 @@ fn animate_entities(
 }
 
 fn lancer_face_axe_man(
-    axe_man_query: LdtkEntityQuery<&GlobalTransform>,
-    mut lancer_query: LdtkEntityQuery<(&GlobalTransform, &mut Direction)>,
+    axe_man_query: LdtkEntityQuery<LdtkLocation>,
+    mut lancer_query: LdtkEntityQuery<(LdtkLocation, &mut Direction)>,
 ) {
     let Some(axe_man_global_transform) = axe_man_query.get_iid(AXE_MAN_IID) else {
         return;
@@ -451,8 +450,7 @@ fn lancer_face_axe_man(
         return;
     };
 
-    let dir_vec = axe_man_global_transform.translation().truncate()
-        - lancer_global_transform.translation().truncate();
+    let dir_vec = axe_man_global_transform.get() - lancer_global_transform.get();
 
     let direction = match (dir_vec.x < dir_vec.y, -dir_vec.x < dir_vec.y) {
         (true, true) => Direction::North,
@@ -466,28 +464,24 @@ fn lancer_face_axe_man(
 
 fn player_move(
     time: Res<Time>,
-    mut query: LdtkEntityQuery<(Entity, &mut Transform, &GlobalTransform, &PlayerMove)>,
+    mut query: LdtkEntityQuery<(Entity, LdtkLocationMut, &PlayerMove)>,
     mut commands: Commands,
 ) {
-    let Some((axe_man, mut transform, global_transform, player_move)) =
-        query.get_iid_mut(AXE_MAN_IID)
-    else {
+    let Some((axe_man, mut location, player_move)) = query.get_iid_mut(AXE_MAN_IID) else {
         return;
     };
 
-    let location = global_transform.translation().truncate();
-    let destination = player_move.destination;
-    let to_destination = destination - location;
+    let to_destination = player_move.destination - location.get();
 
     if to_destination.length_squared() < 0.1 {
-        transform.translation += to_destination.extend(0.0);
+        location.add(to_destination);
         commands
             .entity(axe_man)
             .remove::<PlayerMove>()
             .insert(Animation::Idle);
     } else {
-        let to_destination = to_destination.normalize() * PLAYER_MOVE_SPEED * time.delta_secs();
-        transform.translation += to_destination.extend(0.0);
+        let step = to_destination.normalize() * PLAYER_MOVE_SPEED * time.delta_secs();
+        location.add(step);
     }
 }
 
@@ -548,10 +542,6 @@ fn main() {
             .set(image_plugin_settings)
             .set(asset_plugin_settings),
         ShieldtankPlugins,
-        EguiPlugin {
-            enable_multipass_for_primary_context: true,
-        },
-        WorldInspectorPlugin::default(),
     ))
     .init_state::<GameState>()
     .insert_resource(GlobalTimer::new())
