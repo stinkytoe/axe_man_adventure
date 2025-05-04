@@ -6,7 +6,6 @@ edition = "2024"
 
 [dependencies]
 bevy = "0.16"
-
 tinyrand = "0.5"
 
 #bevy-inspector-egui = "0.30"
@@ -27,7 +26,7 @@ dev = [
 dev_native = [
 	"dev",
 	# Enable asset hot reloading for native dev builds.
-	#"bevy/file_watcher",
+	"bevy/file_watcher",
 	# Enable embedded asset hot reloading for native dev builds.
 	#"bevy/embedded_watcher",
 ]
