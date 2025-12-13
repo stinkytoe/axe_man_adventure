@@ -4,8 +4,6 @@ use bevy::DefaultPlugins;
 use bevy::color::palettes::tailwind::GRAY_500;
 use bevy::prelude::*;
 use bevy::window::WindowMode;
-use bevy_inspector_egui::bevy_egui::EguiPlugin;
-use bevy_inspector_egui::quick::WorldInspectorPlugin;
 use shieldtank::prelude::*;
 use tinyrand::{Rand, StdRand};
 
@@ -577,12 +575,18 @@ fn main() {
             .set(asset_plugin_settings),
         ShieldtankPlugins,
     ))
-    .add_plugins(EguiPlugin::default())
-    .add_plugins(WorldInspectorPlugin::default())
     .init_state::<GameState>()
     .insert_resource(GlobalTimer::new())
     .add_systems(Startup, startup)
     .add_systems(Update, global_timer);
+
+    #[cfg(debug_assertions)]
+    {
+        use bevy_inspector_egui::bevy_egui::EguiPlugin;
+        use bevy_inspector_egui::quick::WorldInspectorPlugin;
+        app.add_plugins(EguiPlugin::default())
+            .add_plugins(WorldInspectorPlugin::default());
+    }
 
     // Title state
     app.add_systems(OnEnter(GameState::Title), init_title_state);
