@@ -4,24 +4,15 @@ use bevy::DefaultPlugins;
 use bevy::color::palettes::tailwind::GRAY_500;
 use bevy::prelude::*;
 use bevy::window::WindowMode;
-use shieldtank::bevy_ldtk_asset::iid::{Iid, iid};
-use shieldtank::component::field_instances::LdtkFieldInstances;
-use shieldtank::component::iid::LdtkIid;
-use shieldtank::component::tile::LdtkTile;
-use shieldtank::component::world::LdtkWorld;
-use shieldtank::debug_gizmos::DebugGizmos;
-use shieldtank::plugin::ShieldtankPlugins;
-use shieldtank::query::entity::LdtkEntityQuery;
-use shieldtank::query::grid_value::GridValueQuery;
-use shieldtank::query::layer::LdtkLayerQuery;
-// use shieldtank::query::location::{LdtkLocationData, LdtkLocationDataReadOnly};
-use shieldtank::query::location::{LdtkLocation, LdtkLocationMut};
+use bevy_inspector_egui::bevy_egui::EguiPlugin;
+use bevy_inspector_egui::quick::WorldInspectorPlugin;
+use shieldtank::prelude::*;
 use tinyrand::{Rand, StdRand};
 
 const AXE_MAN_IID: Iid = iid!("a0170640-9b00-11ef-aa23-11f9c6be2b6e");
 const LANCER_IID: Iid = iid!("85f22ca0-fec0-11ee-8cdd-41f7def1ae8a");
 
-const WINDOW_RESOLUTION: Vec2 = Vec2::new(1280.0, 960.0);
+const WINDOW_RESOLUTION: UVec2 = UVec2::new(1280, 960);
 
 const GLOBAL_FRAME_TIME: f32 = 1.0 / 3.75;
 const ATTACK_FRAME_TIME: f32 = 1.0 / 15.0;
@@ -33,6 +24,7 @@ const PLAYER_MOVE_SPEED: f32 = 40.0;
 enum GameState {
     #[default]
     Title,
+    Loading,
     Playing,
     GameOver,
 }
@@ -53,6 +45,12 @@ impl GlobalTimer {
             frame: 0,
         }
     }
+}
+
+#[derive(Debug, Resource)]
+struct ImportantEntities {
+    axe_man: Entity,
+    lancer: Entity,
 }
 
 #[derive(Clone, Copy, PartialEq, Component)]
@@ -169,31 +167,9 @@ fn startup(mut commands: Commands) {
     ));
 }
 
-fn debug_keyboard_commands(
-    keyboard_input: Res<ButtonInput<KeyCode>>,
-    mut debug_gizmos: ResMut<DebugGizmos>,
-) {
-    if keyboard_input.just_pressed(KeyCode::F1) {
-        debug_gizmos.level_gizmos = !debug_gizmos.level_gizmos;
-    }
-
-    if keyboard_input.just_pressed(KeyCode::F2) {
-        debug_gizmos.layer_gizmos = !debug_gizmos.layer_gizmos;
-    }
-
-    if keyboard_input.just_pressed(KeyCode::F3) {
-        debug_gizmos.grid_values_query = !debug_gizmos.grid_values_query;
-    }
-
-    if keyboard_input.just_pressed(KeyCode::F4) {
-        debug_gizmos.entity_gizmos = !debug_gizmos.entity_gizmos;
-    }
-}
-
 fn init_title_state(mut commands: Commands, asset_server: Res<AssetServer>) {
-    commands.spawn(LdtkWorld {
-        handle: asset_server.load("ldtk/axe_man_adventure.ldtk#worlds:Title"),
-        ..Default::default()
+    commands.spawn(ShieldtankWorld {
+        handle: asset_server.load("ldtk/axe_man_adventure.ldtk#world:Title"),
     });
 
     commands.spawn((
@@ -205,7 +181,7 @@ fn init_title_state(mut commands: Commands, asset_server: Res<AssetServer>) {
             ..Default::default()
         },
         TextColor(GRAY_500.into()),
-        TextLayout::new_with_justify(JustifyText::Center),
+        TextLayout::new_with_justify(Justify::Center),
         Node {
             position_type: PositionType::Absolute,
             bottom: Val::Px(40.0),
@@ -222,50 +198,84 @@ fn key_events_title_state(
     mut next_state: ResMut<NextState<GameState>>,
 ) {
     if keyboard_input.any_just_pressed([KeyCode::KeyF, KeyCode::Space]) {
-        next_state.set(GameState::Playing);
+        next_state.set(GameState::Loading);
     }
 }
 
-fn exit_title_state(query: Single<Entity, With<LdtkWorld>>, mut commands: Commands) {
+fn exit_title_state(query: Single<Entity, With<ShieldtankWorld>>, mut commands: Commands) {
     commands.entity(*query).despawn();
 }
 
-fn init_playing_state(
+fn init_loading_state(
     asset_server: Res<AssetServer>,
     mut message_board: Single<&mut Text, With<MessageBoard>>,
     mut commands: Commands,
 ) {
-    commands.spawn(LdtkWorld {
-        handle: asset_server.load("ldtk/axe_man_adventure.ldtk#worlds:World"),
-        ..Default::default()
+    debug!("init_loading_state");
+    commands.spawn(ShieldtankWorld {
+        handle: asset_server.load("ldtk/axe_man_adventure.ldtk#world:World"),
     });
 
     message_board.0 = "The Axe Man begins his adventure!".to_string();
 }
 
+fn wait_on_important_entities(
+    query: Query<(Entity, &ShieldtankIid), With<ShieldtankEntity>>,
+    mut next_state: ResMut<NextState<GameState>>,
+    mut commands: Commands,
+) {
+    let maybe_axe_man_entity = query
+        .iter()
+        .find(|&(_, ldtk_iid)| *ldtk_iid == AXE_MAN_IID)
+        .map(|(entity, _)| entity);
+
+    let maybe_lancer_entity = query
+        .iter()
+        .find(|&(_, ldtk_iid)| *ldtk_iid == LANCER_IID)
+        .map(|(entity, _)| entity);
+
+    if let (Some(axe_man), Some(lancer)) = (maybe_axe_man_entity, maybe_lancer_entity) {
+        debug!("Axe Man {axe_man} and Lancer {lancer} loaded!");
+        let important_entities = ImportantEntities { axe_man, lancer };
+        commands.insert_resource(important_entities);
+        next_state.set(GameState::Playing);
+    }
+}
+
 fn movement_key_events(
     keyboard_input: Res<ButtonInput<KeyCode>>,
+    important_entities: Res<ImportantEntities>,
     grid_value_query: GridValueQuery,
-    other_entities_query: LdtkEntityQuery<(Entity, &LdtkIid)>,
-    axe_man_query: LdtkEntityQuery<(Entity, LdtkLocation), Without<PlayerMove>>,
+    other_entities_query: Query<(Entity, &ShieldtankGlobalBounds), With<ShieldtankEntity>>,
+    axe_man_query: Query<
+        (Entity, ShieldtankLocation),
+        (With<ShieldtankEntity>, Without<PlayerMove>),
+    >,
     mut commands: Commands,
     mut next_state: ResMut<NextState<GameState>>,
     mut message_board: Single<&mut Text, With<MessageBoard>>,
 ) {
+    const UP: (bool, bool, bool, bool) = (true, false, false, false);
+    const RIGHT: (bool, bool, bool, bool) = (false, true, false, false);
+    const DOWN: (bool, bool, bool, bool) = (false, false, true, false);
+    const LEFT: (bool, bool, bool, bool) = (false, false, false, true);
+
     let up_key = keyboard_input.any_pressed([KeyCode::KeyW, KeyCode::ArrowUp]);
     let right_key = keyboard_input.any_pressed([KeyCode::KeyD, KeyCode::ArrowRight]);
     let down_key = keyboard_input.any_pressed([KeyCode::KeyS, KeyCode::ArrowDown]);
     let left_key = keyboard_input.any_pressed([KeyCode::KeyA, KeyCode::ArrowLeft]);
 
-    let direction = match (up_key, right_key, down_key, left_key) {
-        (true, false, false, false) => Direction::North,
-        (false, true, false, false) => Direction::East,
-        (false, false, true, false) => Direction::South,
-        (false, false, false, true) => Direction::West,
+    let direction = (up_key, right_key, down_key, left_key);
+
+    let direction = match direction {
+        UP => Direction::North,
+        RIGHT => Direction::East,
+        DOWN => Direction::South,
+        LEFT => Direction::West,
         _ => return,
     };
 
-    let Some((axe_man, location)) = axe_man_query.get_iid(AXE_MAN_IID) else {
+    let Some((axe_man, location)) = axe_man_query.get(important_entities.axe_man).ok() else {
         return;
     };
 
@@ -273,15 +283,23 @@ fn movement_key_events(
 
     let destination = location.get() + 16.0 * direction.as_vec2();
 
-    if let Some((lancer, iid)) = other_entities_query.location_in_bounds(destination).next() {
-        if **iid == LANCER_IID {
+    if let Some(touched_entity) = other_entities_query
+        .iter()
+        .find(|(_, global_bounds)| global_bounds.contains(destination))
+        .map(|(lancer, _)| lancer)
+    {
+        // Touching the lancer means death!
+        if touched_entity == important_entities.lancer {
             info!("The Axe Man runs into The Lancer!");
-            next_state.set(GameState::GameOver);
             message_board.0 = "The axe man has been slain!".to_string();
             commands.entity(axe_man).insert(Animation::new_dying());
-            commands.entity(lancer).insert(Animation::new_attack());
+            commands
+                .entity(touched_entity)
+                .insert(Animation::new_attack());
+            next_state.set(GameState::GameOver);
         }
 
+        // If it's any other entity besides the lancer, then disallow movement.
         return;
     }
 
@@ -314,29 +332,45 @@ fn movement_key_events(
 
 fn interact_key_events(
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    other_entities_query: LdtkEntityQuery<(Entity, &LdtkIid, Option<&LdtkFieldInstances>)>,
-    axe_man_query: LdtkEntityQuery<(Entity, LdtkLocation, &Direction), Without<PlayerMove>>,
+    important_entities: Res<ImportantEntities>,
+    other_entities_query: Query<
+        (
+            Entity,
+            Option<&ShieldtankFieldInstances>,
+            &ShieldtankGlobalBounds,
+        ),
+        (With<ShieldtankEntity>, Without<PlayerMove>),
+    >,
+    axe_man_query: Query<
+        (Entity, ShieldtankLocation, &Direction),
+        (With<ShieldtankEntity>, Without<PlayerMove>),
+    >,
     mut rand: Local<StdRand>,
     mut next_state: ResMut<NextState<GameState>>,
     mut message_board: Single<&mut Text, With<MessageBoard>>,
     mut commands: Commands,
 ) {
     if keyboard_input.any_just_pressed([KeyCode::KeyF, KeyCode::Space]) {
-        let Some((axe_man, location, direction)) = axe_man_query.get_iid(AXE_MAN_IID) else {
+        let Some((axe_man, location, direction)) =
+            axe_man_query.get(important_entities.axe_man).ok()
+        else {
             return;
         };
 
         let location = location.get();
         let target = location + direction.as_vec2() * 16.0;
 
-        if let Some((lancer, iid, field_instances)) =
-            other_entities_query.location_in_bounds(target).next()
+        if let Some((touched_entity, field_instances, _)) = other_entities_query
+            .iter()
+            .find(|(_, _, global_bounds)| global_bounds.contains(target))
         {
-            if *iid == LANCER_IID {
+            if touched_entity == important_entities.lancer {
                 message_board.0 = "The Vile Lancer has been vanquished!".to_string();
                 next_state.set(GameState::GameOver);
                 commands.entity(axe_man).insert(Animation::new_attack());
-                commands.entity(lancer).insert(Animation::new_dying());
+                commands
+                    .entity(touched_entity)
+                    .insert(Animation::new_dying());
             } else if let Some(field_instances) = field_instances {
                 let Some(replies) = field_instances.get_array_string("Replies") else {
                     return;
@@ -352,7 +386,7 @@ fn interact_key_events(
 }
 
 fn insert_game_entity_components(
-    query: Query<(Entity, &Name), Without<Direction>>,
+    query: Query<(Entity, &Name), (With<ShieldtankEntity>, Without<Direction>)>,
     mut commands: Commands,
 ) {
     for (entity, name) in query {
@@ -366,7 +400,7 @@ fn insert_game_entity_components(
 
 fn animate_water(
     global_timer: Res<GlobalTimer>,
-    mut query: LdtkLayerQuery<(&Name, &mut Visibility)>,
+    mut query: Query<(&Name, &mut Visibility), With<ShieldtankLayer>>,
 ) {
     let frame = global_timer.frame;
 
@@ -390,11 +424,11 @@ fn animate_water(
 fn animate_entities(
     time: Res<Time>,
     global_timer: Res<GlobalTimer>,
-    mut query: LdtkEntityQuery<(
-        &LdtkFieldInstances,
+    mut query: Query<(
+        &ShieldtankFieldInstances,
         &Direction,
         &mut Animation,
-        &mut LdtkTile,
+        &mut ShieldtankTile,
     )>,
 ) {
     for (field_instances, direction, mut animation, mut tile) in query.iter_mut() {
@@ -437,20 +471,21 @@ fn animate_entities(
 }
 
 fn lancer_face_axe_man(
-    axe_man_query: LdtkEntityQuery<LdtkLocation>,
-    mut lancer_query: LdtkEntityQuery<(LdtkLocation, &mut Direction)>,
+    axe_man_query: Query<ShieldtankLocation>,
+    important_entities: Res<ImportantEntities>,
+    mut lancer_query: Query<(ShieldtankLocation, &mut Direction)>,
 ) {
-    let Some(axe_man_global_transform) = axe_man_query.get_iid(AXE_MAN_IID) else {
+    let Some(axe_man_location) = axe_man_query.get(important_entities.axe_man).ok() else {
         return;
     };
 
-    let Some((lancer_global_transform, mut lancer_direction)) =
-        lancer_query.get_iid_mut(LANCER_IID)
+    let Some((lancer_location, mut lancer_direction)) =
+        lancer_query.get_mut(important_entities.lancer).ok()
     else {
         return;
     };
 
-    let dir_vec = axe_man_global_transform.get() - lancer_global_transform.get();
+    let dir_vec = axe_man_location.get() - lancer_location.get();
 
     let direction = match (dir_vec.x < dir_vec.y, -dir_vec.x < dir_vec.y) {
         (true, true) => Direction::North,
@@ -464,24 +499,22 @@ fn lancer_face_axe_man(
 
 fn player_move(
     time: Res<Time>,
-    mut query: LdtkEntityQuery<(Entity, LdtkLocationMut, &PlayerMove)>,
+    query: Query<(Entity, ShieldtankLocationMut, &PlayerMove), With<ShieldtankEntity>>,
     mut commands: Commands,
 ) {
-    let Some((axe_man, mut location, player_move)) = query.get_iid_mut(AXE_MAN_IID) else {
-        return;
-    };
+    for (entity, mut location, player_move) in query {
+        let to_destination = player_move.destination - location.get();
 
-    let to_destination = player_move.destination - location.get();
-
-    if to_destination.length_squared() < 0.1 {
-        location.add(to_destination);
-        commands
-            .entity(axe_man)
-            .remove::<PlayerMove>()
-            .insert(Animation::Idle);
-    } else {
-        let step = to_destination.normalize() * PLAYER_MOVE_SPEED * time.delta_secs();
-        location.add(step);
+        if to_destination.length_squared() < 0.1 {
+            location.add(to_destination);
+            commands
+                .entity(entity)
+                .remove::<PlayerMove>()
+                .insert(Animation::Idle);
+        } else {
+            let step = to_destination.normalize() * PLAYER_MOVE_SPEED * time.delta_secs();
+            location.add(step);
+        }
     }
 }
 
@@ -495,7 +528,7 @@ fn gameover_key_events(
 }
 
 fn exit_gameover_state(
-    query: Single<Entity, With<LdtkWorld>>,
+    query: Single<Entity, With<ShieldtankWorld>>,
     message_board: Single<Entity, With<MessageBoard>>,
     mut commands: Commands,
 ) {
@@ -509,7 +542,7 @@ fn main() {
         filter: "wgpu_hal=off,\
                  winit=off,\
                  bevy_winit=off,\
-                 bevy_ldtk_asset=debug,\
+                 bevy_ldtk_asset=info,\
                  shieldtank=debug,\
                  axe_man_adventure=debug"
             .into(),
@@ -529,6 +562,7 @@ fn main() {
     let image_plugin_settings = ImagePlugin::default_nearest();
 
     let asset_plugin_settings = AssetPlugin {
+        // To make itch.io happy, since they're allergic to 404 errors.
         meta_check: bevy::asset::AssetMetaCheck::Never,
         ..Default::default()
     };
@@ -543,10 +577,12 @@ fn main() {
             .set(asset_plugin_settings),
         ShieldtankPlugins,
     ))
+    .add_plugins(EguiPlugin::default())
+    .add_plugins(WorldInspectorPlugin::default())
     .init_state::<GameState>()
     .insert_resource(GlobalTimer::new())
     .add_systems(Startup, startup)
-    .add_systems(Update, (global_timer, debug_keyboard_commands));
+    .add_systems(Update, global_timer);
 
     // Title state
     app.add_systems(OnEnter(GameState::Title), init_title_state);
@@ -556,8 +592,14 @@ fn main() {
     );
     app.add_systems(OnExit(GameState::Title), exit_title_state);
 
+    // Loading state
+    app.add_systems(OnEnter(GameState::Loading), init_loading_state);
+    app.add_systems(
+        Update,
+        wait_on_important_entities.run_if(in_state(GameState::Loading)),
+    );
+
     // Playing state
-    app.add_systems(OnEnter(GameState::Playing), init_playing_state);
     app.add_systems(
         Update,
         (
@@ -572,6 +614,7 @@ fn main() {
             .run_if(in_state(GameState::Playing)),
     );
 
+    // Game Over state
     app.add_systems(
         Update,
         (gameover_key_events, animate_water, animate_entities)

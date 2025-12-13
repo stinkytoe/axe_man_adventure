@@ -5,13 +5,13 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = "0.16"
+bevy = "0.17"
 tinyrand = "0.5"
 
-#bevy-inspector-egui = "0.30"
+bevy-inspector-egui = "0.35"
 
-shieldtank = { git = "https://github.com/stinkytoe/shieldtank.git" }
-#shieldtank = { path = "../shieldtank/" }
+#shieldtank = { git = "https://github.com/stinkytoe/shieldtank.git" }
+shieldtank = { path = "../shieldtank/" }
 
 [features]
 default = [
