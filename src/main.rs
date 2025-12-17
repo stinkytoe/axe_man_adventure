@@ -218,19 +218,13 @@ fn init_loading_state(
 }
 
 fn wait_on_important_entities(
-    query: Query<(Entity, &ShieldtankIid), With<ShieldtankEntity>>,
+    query_by_iid: QueryByIid<Entity>,
     mut next_state: ResMut<NextState<GameState>>,
     mut commands: Commands,
 ) {
-    let maybe_axe_man_entity = query
-        .iter()
-        .find(|&(_, ldtk_iid)| *ldtk_iid == AXE_MAN_IID)
-        .map(|(entity, _)| entity);
+    let maybe_axe_man_entity = query_by_iid.get(AXE_MAN_IID);
 
-    let maybe_lancer_entity = query
-        .iter()
-        .find(|&(_, ldtk_iid)| *ldtk_iid == LANCER_IID)
-        .map(|(entity, _)| entity);
+    let maybe_lancer_entity = query_by_iid.get(LANCER_IID);
 
     if let (Some(axe_man), Some(lancer)) = (maybe_axe_man_entity, maybe_lancer_entity) {
         debug!("Axe Man {axe_man} and Lancer {lancer} loaded!");
@@ -240,7 +234,15 @@ fn wait_on_important_entities(
     }
 }
 
+// impl<'w, 's, D, F> SingleByIidMut<'w, 's, D, F>
+// where
+//     D: QueryData<ReadOnly = D> + 'static,
+//     F: QueryFilter + 'static,
+// {
+// }
+
 fn movement_key_events(
+    _test: QueryByIid<(), ()>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
     important_entities: Res<ImportantEntities>,
     grid_value_query: GridValueQuery,
@@ -582,10 +584,10 @@ fn main() {
 
     #[cfg(debug_assertions)]
     {
-        use bevy_inspector_egui::bevy_egui::EguiPlugin;
-        use bevy_inspector_egui::quick::WorldInspectorPlugin;
-        app.add_plugins(EguiPlugin::default())
-            .add_plugins(WorldInspectorPlugin::default());
+        // use bevy_inspector_egui::bevy_egui::EguiPlugin;
+        // use bevy_inspector_egui::quick::WorldInspectorPlugin;
+        // app.add_plugins(EguiPlugin::default())
+        //     .add_plugins(WorldInspectorPlugin::default());
     }
 
     // Title state
