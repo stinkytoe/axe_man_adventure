@@ -200,7 +200,6 @@ fn init_playing_state(
     mut message_board: Single<&mut Text, With<MessageBoard>>,
     mut commands: Commands,
 ) {
-    debug!("init_playing_state");
     commands.spawn(ShieldtankWorld {
         handle: asset_server.load("ldtk/axe_man_adventure.ldtk#world:World"),
     });
