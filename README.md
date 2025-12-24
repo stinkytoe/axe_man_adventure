@@ -16,6 +16,6 @@ This is a simple game I am using to help steer development of the [Shieldtank](h
 
 ## The World
 
-The world consists of two levels: `Island_of_Thieves` and `Isthmus_of_Pain`. When in the `Playing` state, the world labeled `axe_man_adventure.ldtk#worlds:World` is loaded which contains these levels, and their associated layers and entities. 
+The world consists of two levels: `Island_of_Thieves` and `Peninsula_of_Pain`. When in the `Playing` state, the world labeled `axe_man_adventure.ldtk#worlds:World` is loaded which contains these levels, and their associated layers and entities. 
 
 

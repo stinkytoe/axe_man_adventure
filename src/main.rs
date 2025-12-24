@@ -134,10 +134,8 @@ impl Animation {
     }
 }
 
-#[derive(Component)]
-struct PlayerMove {
-    destination: Vec2,
-}
+#[derive(Component, Deref, DerefMut)]
+struct PlayerMove(Vec2);
 
 #[derive(Component)]
 struct MessageBoard;
@@ -193,8 +191,8 @@ fn key_events_title_state(
     }
 }
 
-fn exit_title_state(query: Single<Entity, With<ShieldtankWorld>>, mut commands: Commands) {
-    commands.entity(*query).despawn();
+fn exit_title_state(title_screen: Single<Entity, With<ShieldtankWorld>>, mut commands: Commands) {
+    commands.entity(*title_screen).despawn();
 }
 
 fn init_playing_state(
@@ -211,7 +209,6 @@ fn init_playing_state(
 }
 
 fn movement_key_events(
-    _test: QueryByIid<(), ()>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
     grid_value_query: GridValueQuery,
     other_entities_query: QueryByGlobalBounds<(Entity, &ShieldtankIid), With<ShieldtankEntity>>,
@@ -282,7 +279,7 @@ fn movement_key_events(
                 || terrain_identifier == "tree"
                 || terrain_identifier == "bridge" =>
         {
-            let player_move = PlayerMove { destination };
+            let player_move = PlayerMove(destination);
             commands
                 .entity(axe_man)
                 .insert(player_move)
@@ -456,7 +453,7 @@ fn player_move(
     mut commands: Commands,
 ) {
     for (entity, mut location, player_move) in query {
-        let to_destination = player_move.destination - location.get();
+        let to_destination = **player_move - location.get();
 
         if to_destination.length_squared() < 0.1 {
             location.add(to_destination);
