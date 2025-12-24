@@ -247,7 +247,7 @@ fn movement_key_events(
 
     let destination = location.get() + 16.0 * direction.as_vec2();
 
-    if let Some((touched_entity, &iid)) = other_entities_query.by_location(destination).next() {
+    if let Ok((touched_entity, &iid)) = other_entities_query.single_by_location(destination) {
         // Touching the lancer means death!
         if iid == LANCER_IID {
             info!("The Axe Man runs into The Lancer!");
@@ -313,8 +313,8 @@ fn interact_key_events(
         let location = location.get();
         let target = location + direction.as_vec2() * 16.0;
 
-        if let Some((touched_entity, field_instances, &iid)) =
-            other_entities_query.by_location(target).next()
+        if let Ok((touched_entity, field_instances, &iid)) =
+            other_entities_query.single_by_location(target)
         {
             if iid == LANCER_IID {
                 message_board.0 = "The Vile Lancer has been vanquished!".to_string();
