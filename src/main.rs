@@ -5,7 +5,7 @@ use bevy::color::palettes::tailwind::GRAY_500;
 use bevy::prelude::*;
 use bevy::window::WindowMode;
 use shieldtank::prelude::*;
-use tinyrand::{Rand, StdRand};
+use tinyrand::{RandRange as _, StdRand};
 
 const AXE_MAN_IID: Iid = iid!("a0170640-9b00-11ef-aa23-11f9c6be2b6e");
 const LANCER_IID: Iid = iid!("85f22ca0-fec0-11ee-8cdd-41f7def1ae8a");
@@ -328,7 +328,7 @@ fn interact_key_events(
                     return;
                 };
 
-                let rand = rand.next_usize() % replies.len();
+                let rand = rand.next_range(0..replies.len());
                 message_board.0 = replies[rand].clone();
             }
         } else {
