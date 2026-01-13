@@ -8,7 +8,9 @@ use shieldtank::prelude::*;
 use tinyrand::{RandRange as _, StdRand};
 
 const AXE_MAN_IID: Iid = iid!("a0170640-9b00-11ef-aa23-11f9c6be2b6e");
+const AXE_MAN_IID_U128: u128 = AXE_MAN_IID.as_u128();
 const LANCER_IID: Iid = iid!("85f22ca0-fec0-11ee-8cdd-41f7def1ae8a");
+const LANCER_IID_U128: u128 = LANCER_IID.as_u128();
 
 const WINDOW_RESOLUTION: UVec2 = UVec2::new(1280, 960);
 
@@ -165,7 +167,7 @@ fn init_title_state(mut commands: Commands, asset_server: Res<AssetServer>) {
         Name::new("MessageBoard"),
         Text::new("Press F or Space to start!"),
         TextFont {
-            font: asset_server.load("fonts/Primitive.ttf"),
+            font: FontSource::Handle(asset_server.load("fonts/Primitive.ttf")),
             font_size: 50.0,
             ..Default::default()
         },
@@ -211,7 +213,8 @@ fn movement_key_events(
     keyboard_input: Res<ButtonInput<KeyCode>>,
     grid_value_query: GridValueQuery,
     other_entities_query: QueryByGlobalBounds<(Entity, &ShieldtankIid), With<ShieldtankEntity>>,
-    axe_man_query: QueryByIid<
+    axe_man_query: SingleByIid<
+        AXE_MAN_IID_U128,
         (Entity, ShieldtankLocation),
         (With<ShieldtankEntity>, Without<PlayerMove>),
     >,
@@ -239,9 +242,7 @@ fn movement_key_events(
         _ => return,
     };
 
-    let Some((axe_man, location)) = axe_man_query.get(AXE_MAN_IID) else {
-        return;
-    };
+    let (axe_man, ref location) = *axe_man_query;
 
     commands.entity(axe_man).insert(direction);
 
@@ -296,7 +297,8 @@ fn interact_key_events(
         (Entity, Option<&ShieldtankFieldInstances>, &ShieldtankIid),
         (With<ShieldtankEntity>, Without<PlayerMove>),
     >,
-    axe_man_query: QueryByIid<
+    axe_man_query: SingleByIid<
+        AXE_MAN_IID_U128,
         (Entity, ShieldtankLocation, &Direction),
         (With<ShieldtankEntity>, Without<PlayerMove>),
     >,
@@ -306,9 +308,7 @@ fn interact_key_events(
     mut commands: Commands,
 ) {
     if keyboard_input.any_just_pressed([KeyCode::KeyF, KeyCode::Space]) {
-        let Some((axe_man, location, direction)) = axe_man_query.get(AXE_MAN_IID) else {
-            return;
-        };
+        let (axe_man, ref location, direction) = *axe_man_query;
 
         let location = location.get();
         let target = location + direction.as_vec2() * 16.0;
@@ -423,16 +423,16 @@ fn animate_entities(
 }
 
 fn lancer_face_axe_man(
-    axe_man_query: QueryByIid<ShieldtankLocation, Changed<ShieldtankGlobalBounds>>,
-    mut lancer_query: QueryByIid<(ShieldtankLocation, &mut Direction)>,
+    axe_man_query: SingleByIid<
+        AXE_MAN_IID_U128,
+        ShieldtankLocation,
+        Changed<ShieldtankGlobalBounds>,
+    >,
+    lancer_query: SingleByIid<LANCER_IID_U128, (ShieldtankLocation, &mut Direction)>,
 ) {
-    let Some(axe_man_location) = axe_man_query.get(AXE_MAN_IID) else {
-        return;
-    };
+    let axe_man_location = &*axe_man_query;
 
-    let Some((lancer_location, mut lancer_direction)) = lancer_query.get_mut(LANCER_IID) else {
-        return;
-    };
+    let (lancer_location, mut lancer_direction) = lancer_query.into_inner();
 
     let dir_vec = axe_man_location.get() - lancer_location.get();
 
