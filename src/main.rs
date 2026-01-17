@@ -7,10 +7,8 @@ use bevy::window::WindowMode;
 use shieldtank::prelude::*;
 use tinyrand::{RandRange as _, StdRand};
 
-const AXE_MAN_IID: Iid = iid!("a0170640-9b00-11ef-aa23-11f9c6be2b6e");
-const AXE_MAN_IID_U128: u128 = AXE_MAN_IID.as_u128();
-const LANCER_IID: Iid = iid!("85f22ca0-fec0-11ee-8cdd-41f7def1ae8a");
-const LANCER_IID_U128: u128 = LANCER_IID.as_u128();
+const AXE_MAN_IID: u128 = iid!("a0170640-9b00-11ef-aa23-11f9c6be2b6e").as_u128();
+const LANCER_IID: u128 = iid!("85f22ca0-fec0-11ee-8cdd-41f7def1ae8a").as_u128();
 
 const WINDOW_RESOLUTION: UVec2 = UVec2::new(1280, 960);
 
@@ -167,7 +165,7 @@ fn init_title_state(mut commands: Commands, asset_server: Res<AssetServer>) {
         Name::new("MessageBoard"),
         Text::new("Press F or Space to start!"),
         TextFont {
-            font: FontSource::Handle(asset_server.load("fonts/Primitive.ttf")),
+            font: asset_server.load("fonts/Primitive.ttf"),
             font_size: 50.0,
             ..Default::default()
         },
@@ -214,7 +212,7 @@ fn movement_key_events(
     grid_value_query: GridValueQuery,
     other_entities_query: QueryByGlobalBounds<(Entity, &ShieldtankIid), With<ShieldtankEntity>>,
     axe_man_query: SingleByIid<
-        AXE_MAN_IID_U128,
+        AXE_MAN_IID,
         (Entity, ShieldtankLocation),
         (With<ShieldtankEntity>, Without<PlayerMove>),
     >,
@@ -298,7 +296,7 @@ fn interact_key_events(
         (With<ShieldtankEntity>, Without<PlayerMove>),
     >,
     axe_man_query: SingleByIid<
-        AXE_MAN_IID_U128,
+        AXE_MAN_IID,
         (Entity, ShieldtankLocation, &Direction),
         (With<ShieldtankEntity>, Without<PlayerMove>),
     >,
@@ -424,11 +422,11 @@ fn animate_entities(
 
 fn lancer_face_axe_man(
     axe_man_query: SingleByIid<
-        AXE_MAN_IID_U128,
+        AXE_MAN_IID,
         ShieldtankLocation,
-        Changed<ShieldtankGlobalBounds>,
+        //Changed<ShieldtankGlobalBounds>,
     >,
-    lancer_query: SingleByIid<LANCER_IID_U128, (ShieldtankLocation, &mut Direction)>,
+    lancer_query: SingleByIid<LANCER_IID, (ShieldtankLocation, &mut Direction)>,
 ) {
     let axe_man_location = &*axe_man_query;
 
@@ -533,10 +531,10 @@ fn main() {
 
     #[cfg(debug_assertions)]
     {
-        // use bevy_inspector_egui::bevy_egui::EguiPlugin;
-        // use bevy_inspector_egui::quick::WorldInspectorPlugin;
-        // app.add_plugins(EguiPlugin::default())
-        //     .add_plugins(WorldInspectorPlugin::default());
+        use bevy_inspector_egui::bevy_egui::EguiPlugin;
+        use bevy_inspector_egui::quick::WorldInspectorPlugin;
+        app.add_plugins(EguiPlugin::default())
+            .add_plugins(WorldInspectorPlugin::default());
     }
 
     // Title state
