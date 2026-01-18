@@ -213,7 +213,7 @@ fn movement_key_events(
     other_entities_query: QueryByGlobalBounds<(Entity, &ShieldtankIid), With<ShieldtankEntity>>,
     axe_man_query: SingleByIid<
         AXE_MAN_IID,
-        (Entity, ShieldtankLocation),
+        (Entity, ShieldtankWorldLocation),
         (With<ShieldtankEntity>, Without<PlayerMove>),
     >,
     mut commands: Commands,
@@ -297,7 +297,7 @@ fn interact_key_events(
     >,
     axe_man_query: SingleByIid<
         AXE_MAN_IID,
-        (Entity, ShieldtankLocation, &Direction),
+        (Entity, ShieldtankWorldLocation, &Direction),
         (With<ShieldtankEntity>, Without<PlayerMove>),
     >,
     mut rand: Local<StdRand>,
@@ -423,10 +423,10 @@ fn animate_entities(
 fn lancer_face_axe_man(
     axe_man_query: SingleByIid<
         AXE_MAN_IID,
-        ShieldtankLocation,
+        ShieldtankWorldLocation,
         //Changed<ShieldtankGlobalBounds>,
     >,
-    lancer_query: SingleByIid<LANCER_IID, (ShieldtankLocation, &mut Direction)>,
+    lancer_query: SingleByIid<LANCER_IID, (ShieldtankWorldLocation, &mut Direction)>,
 ) {
     let axe_man_location = &*axe_man_query;
 
@@ -446,7 +446,7 @@ fn lancer_face_axe_man(
 
 fn player_move(
     time: Res<Time>,
-    query: Query<(Entity, ShieldtankLocationMut, &PlayerMove), With<ShieldtankEntity>>,
+    query: Query<(Entity, ShieldtankWorldLocationMut, &PlayerMove), With<ShieldtankEntity>>,
     mut commands: Commands,
 ) {
     for (entity, mut location, player_move) in query {
