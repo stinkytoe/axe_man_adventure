@@ -508,20 +508,13 @@ fn main() {
 
     let image_plugin_settings = ImagePlugin::default_nearest();
 
-    let asset_plugin_settings = AssetPlugin {
-        // To make itch.io happy, since they're allergic to 404 errors.
-        meta_check: bevy::asset::AssetMetaCheck::Never,
-        ..Default::default()
-    };
-
     let mut app = App::new();
 
     app.add_plugins((
         DefaultPlugins
             .set(log_plugin_settings)
             .set(window_plugin_settings)
-            .set(image_plugin_settings)
-            .set(asset_plugin_settings),
+            .set(image_plugin_settings),
         ShieldtankPlugins,
     ))
     .init_state::<GameState>()
